@@ -53,6 +53,8 @@ public:
     ~ShaderBuilder();
 
     ShaderBuilder& addStage(GLuint shaderStage, std::filesystem::path shaderFile);
+    ShaderBuilder& addVS(const std::filesystem::path& shaderFile);
+    ShaderBuilder& addFS(const std::filesystem::path& shaderFile);
     Shader build();
 
 private:

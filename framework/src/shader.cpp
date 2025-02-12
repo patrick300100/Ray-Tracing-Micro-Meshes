@@ -107,6 +107,14 @@ ShaderBuilder& ShaderBuilder::addStage(GLuint shaderStage, std::filesystem::path
     return *this;
 }
 
+ShaderBuilder& ShaderBuilder::addVS(const std::filesystem::path& shaderFile) {
+    return addStage(GL_VERTEX_SHADER, shaderFile);
+}
+
+ShaderBuilder& ShaderBuilder::addFS(const std::filesystem::path& shaderFile) {
+    return addStage(GL_FRAGMENT_SHADER, shaderFile);
+}
+
 Shader ShaderBuilder::build()
 {
     // Combine vertex and fragment shaders into a single shader program.
