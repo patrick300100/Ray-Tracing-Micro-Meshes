@@ -29,7 +29,6 @@ public:
 
         try {
             m_defaultShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/shader_vert.glsl").addFS(RESOURCE_ROOT "shaders/shader_frag.glsl").build();
-            m_shadowShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/shadow_vert.glsl").addFS(RESOURCE_ROOT "Shaders/shadow_frag.glsl").build();
         } catch (ShaderLoadingException& e) {
             std::cerr << e.what() << std::endl;
         }
@@ -52,18 +51,18 @@ public:
 
             for (GPUMesh& mesh : m_meshes) {
                 m_defaultShader.bind();
-                glUniformMatrix4fv(m_defaultShader.getUniformLocation("mvpMatrix"), 1, GL_FALSE, glm::value_ptr(mvpMatrix));
+                glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
                 //Uncomment this line when you use the modelMatrix (or fragmentPosition)
-                //glUniformMatrix4fv(m_defaultShader.getUniformLocation("modelMatrix"), 1, GL_FALSE, glm::value_ptr(m_modelMatrix));
-                glUniformMatrix3fv(m_defaultShader.getUniformLocation("normalModelMatrix"), 1, GL_FALSE, glm::value_ptr(normalModelMatrix));
+                //glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(m_modelMatrix));
+                glUniformMatrix3fv(2, 1, GL_FALSE, glm::value_ptr(normalModelMatrix));
                 if (mesh.hasTextureCoords()) {
                     m_texture.bind(GL_TEXTURE0);
-                    glUniform1i(m_defaultShader.getUniformLocation("colorMap"), 0);
-                    glUniform1i(m_defaultShader.getUniformLocation("hasTexCoords"), GL_TRUE);
-                    glUniform1i(m_defaultShader.getUniformLocation("useMaterial"), GL_FALSE);
+                    glUniform1i(3, 0);
+                    glUniform1i(4, GL_TRUE);
+                    glUniform1i(5, GL_FALSE);
                 } else {
-                    glUniform1i(m_defaultShader.getUniformLocation("hasTexCoords"), GL_FALSE);
-                    glUniform1i(m_defaultShader.getUniformLocation("useMaterial"), m_useMaterial);
+                    glUniform1i(4, GL_FALSE);
+                    glUniform1i(5, m_useMaterial);
                 }
                 mesh.draw(m_defaultShader);
             }
@@ -75,9 +74,7 @@ public:
 private:
     Window m_window;
 
-    // Shader for default rendering and for depth rendering
     Shader m_defaultShader;
-    Shader m_shadowShader;
 
     std::vector<GPUMesh> m_meshes;
     Texture m_texture;
