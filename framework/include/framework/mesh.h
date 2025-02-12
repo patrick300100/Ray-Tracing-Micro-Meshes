@@ -2,6 +2,7 @@
 #include "image.h"
 // Suppress warnings in third-party code.
 #include <framework/disable_all_warnings.h>
+#include <glm/gtc/quaternion.hpp>
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -15,6 +16,9 @@ struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
 	glm::vec2 texCoord; // Texture coordinate
+
+	glm::ivec4 boneIndices = glm::ivec4(0);
+	glm::vec4 boneWeights = glm::vec4(0.0f);
 
 	[[nodiscard]] constexpr bool operator==(const Vertex&) const noexcept = default;
 };
@@ -33,6 +37,24 @@ struct Material {
 	std::shared_ptr<Image> kdTexture;
 };
 
+struct Bone {
+	std::string name;
+	glm::mat4 offsetMatrix; // Transforms from mesh space to bone space
+};
+
+struct AnimationKeyframe {
+	float time;
+	glm::vec3 translation;
+	glm::quat rotation;
+	glm::vec3 scale;
+};
+
+struct Animation {
+	std::string name;
+	std::vector<std::vector<AnimationKeyframe>> boneKeyframes;
+	float duration;
+};
+
 struct Mesh {
 	// Vertices contain the vertex positions and normals of the mesh.
 	std::vector<Vertex> vertices;
@@ -40,6 +62,9 @@ struct Mesh {
 	std::vector<glm::uvec3> triangles;
 
 	Material material;
+
+	std::vector<Bone> bones;
+	std::vector<Animation> animations;
 };
 
 [[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
