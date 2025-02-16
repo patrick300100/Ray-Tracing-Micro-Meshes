@@ -83,6 +83,17 @@ std::vector<GPUMesh> GPUMesh::loadMeshGPU(std::filesystem::path filePath, bool n
     return gpuMeshes;
 }
 
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& filePath) {
+    if(!std::filesystem::exists(filePath)) throw MeshLoadingException(fmt::format("File {} does not exist", filePath.string().c_str()));
+
+    // Generate GPU-side meshes for all sub-meshes
+    std::vector<Mesh> subMeshes = loadMeshGLTF(filePath);
+    std::vector<GPUMesh> gpuMeshes;
+    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
+
+    return gpuMeshes;
+}
+
 bool GPUMesh::hasTextureCoords() const
 {
     return m_hasTextureCoords;

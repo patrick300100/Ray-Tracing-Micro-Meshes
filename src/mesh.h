@@ -36,6 +36,7 @@ public:
     // Generate a number of GPU meshes from a particular model file.
     // Multiple meshes may be generated if there are multiple sub-meshes in the file
     static std::vector<GPUMesh> loadMeshGPU(std::filesystem::path filePath, bool normalize = false);
+    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& filePath);
 
     // Cannot copy a GPU mesh because it would require reference counting of GPU resources.
     GPUMesh& operator=(const GPUMesh&) = delete;

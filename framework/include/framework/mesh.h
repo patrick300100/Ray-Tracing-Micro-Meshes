@@ -3,6 +3,7 @@
 // Suppress warnings in third-party code.
 #include <framework/disable_all_warnings.h>
 #include <glm/gtc/quaternion.hpp>
+#include <tinygltf/tiny_gltf.h>
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -68,6 +69,7 @@ struct Mesh {
 };
 
 [[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
+std::vector<Mesh> loadMeshGLTF(const std::filesystem::path& file);
 [[nodiscard]] Mesh mergeMeshes(std::span<const Mesh> meshes);
 void meshFlipX(Mesh& mesh);
 void meshFlipY(Mesh& mesh);
