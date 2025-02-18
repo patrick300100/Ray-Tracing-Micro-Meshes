@@ -4,6 +4,8 @@
 #include <framework/disable_all_warnings.h>
 #include <glm/gtc/quaternion.hpp>
 #include <tinygltf/tiny_gltf.h>
+
+#include "TransformationChannel.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
@@ -43,17 +45,19 @@ struct Bone {
 	glm::mat4 offsetMatrix; // Transforms from mesh space to bone space
 };
 
-struct AnimationKeyframe {
-	float time;
-	glm::vec3 translation;
-	glm::quat rotation;
-	glm::vec3 scale;
-};
-
 struct Animation {
-	std::string name;
-	std::vector<std::vector<AnimationKeyframe>> boneKeyframes;
-	float duration;
+	TransformationChannel<glm::vec3> translation;
+	TransformationChannel<glm::quat> rotation;
+	TransformationChannel<glm::vec3> scale;
+	double duration = 0.0;
+
+	glm::mat4 transformationMatrix(float currentTime) {
+		auto t1 = translation.getTransformation(currentTime);
+		auto t2 = rotation.getTransformation(currentTime);
+		auto t3 = scale.getTransformation(currentTime);
+
+		return glm::translate(glm::mat4(1.0f), t1) * glm::mat4_cast(t2) * glm::scale(glm::mat4(1.0f), t3);
+	}
 };
 
 struct Mesh {
@@ -65,7 +69,7 @@ struct Mesh {
 	Material material;
 
 	std::vector<Bone> bones;
-	std::vector<Animation> animations;
+	Animation animation;
 };
 
 [[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);

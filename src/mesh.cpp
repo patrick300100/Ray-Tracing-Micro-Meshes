@@ -13,7 +13,7 @@ GPUMaterial::GPUMaterial(const Material& material) :
     transparency(material.transparency)
 {}
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh)
+GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh)
 {
     // Create uniform buffer to store mesh material (https://learnopengl.com/Advanced-OpenGL/Advanced-GLSL)
     GPUMaterial gpuMaterial(cpuMesh.material);

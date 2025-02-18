@@ -171,6 +171,69 @@ void applyNodeTransformation(std::vector<Vertex>& vertices, const tinygltf::Node
     }
 }
 
+void printGLTFBoneTransformations(const tinygltf::Model& model, Mesh& mesh) {
+    for (size_t animIndex = 0; animIndex < model.animations.size(); ++animIndex) {
+        const auto& animation = model.animations[animIndex];
+        std::cout << "Animation " << animIndex << ":\n";
+
+        for (const auto& channel : animation.channels) {
+            int nodeIndex = channel.target_node;
+            if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) continue;
+
+            const auto& sampler = animation.samplers[channel.sampler];
+
+            // Access time keyframes
+            const auto& timeAccessor = model.accessors[sampler.input];
+            const auto& timeBufferView = model.bufferViews[timeAccessor.bufferView];
+            const auto& timeBuffer = model.buffers[timeBufferView.buffer];
+            const float* timeData = reinterpret_cast<const float*>(&timeBuffer.data[timeBufferView.byteOffset + timeAccessor.byteOffset]);
+
+            int keyframeCount = timeAccessor.count;
+
+            mesh.animation.duration = std::max(mesh.animation.duration, timeAccessor.maxValues[0]);
+
+            // Access transformation keyframes
+            const auto& transformAccessor = model.accessors[sampler.output];
+            const auto& transformBufferView = model.bufferViews[transformAccessor.bufferView];
+            const auto& transformBuffer = model.buffers[transformBufferView.buffer];
+
+            // Print keyframe transformations
+            std::cout << "  Node " << nodeIndex << " (" << model.nodes[nodeIndex].name << ") " << " (" << channel.target_path << "):\n";
+            for (int k = 0; k < keyframeCount; ++k) {
+                float time = timeData[k];
+                glm::mat4 transform = glm::mat4(1.0f);
+
+                if (channel.target_path == "translation") {
+                    const glm::vec3* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
+                    transform = glm::translate(glm::mat4(1.0f), translationData[k]);
+                    mesh.animation.translation.addTransformation(time, translationData[k]);
+                    mesh.animation.translation.setInterpolationMode(sampler.interpolation);
+                }
+                else if (channel.target_path == "rotation") {
+                    const glm::quat* rotationData = reinterpret_cast<const glm::quat*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
+                    transform = glm::mat4_cast(rotationData[k]);
+                    mesh.animation.rotation.addTransformation(time, rotationData[k]);
+                    mesh.animation.rotation.setInterpolationMode(sampler.interpolation);
+                }
+                else if (channel.target_path == "scale") {
+                    const glm::vec3* scaleData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
+                    transform = glm::scale(glm::mat4(1.0f), scaleData[k]);
+                    mesh.animation.scale.addTransformation(time, scaleData[k]);
+                    mesh.animation.scale.setInterpolationMode(sampler.interpolation);
+                }
+
+                // Print matrix
+                std::cout << "    Keyframe " << k << " (Time: " << time << "s):\n";
+                for (int i = 0; i < 4; ++i) {
+                    std::cout << "      ["
+                              << transform[i][0] << ", " << transform[i][1] << ", "
+                              << transform[i][2] << ", " << transform[i][3] << "]\n";
+                }
+            }
+        }
+    }
+}
+
 std::vector<Mesh> loadMeshGLTF(const std::filesystem::path& file) {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
@@ -289,6 +352,10 @@ std::vector<Mesh> loadMeshGLTF(const std::filesystem::path& file) {
          */
         auto nodeIt = std::ranges::find_if(model.nodes, [&gltfMesh](const tinygltf::Node& node) { return node.name == gltfMesh.name; });
         applyNodeTransformation(myMesh.vertices, *nodeIt);
+
+        Animation anim;
+        myMesh.animation = anim;
+        printGLTFBoneTransformations(model, myMesh);
 
         out.push_back(myMesh);
     }
