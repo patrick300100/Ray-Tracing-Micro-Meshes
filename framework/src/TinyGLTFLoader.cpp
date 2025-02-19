@@ -12,6 +12,14 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
     }
 
     if(!warn.empty()) std::cerr << "GLTF Warning: " << warn << std::endl;
+
+    parent.resize(model.skins[0].joints.size(), -1);
+
+    for(const auto nodeIndex : model.skins[0].joints) {
+        for(const auto child : model.nodes[nodeIndex].children) {
+            parent[child] = nodeIndex;
+        }
+    }
 }
 
 std::vector<Mesh> TinyGLTFLoader::toMesh() {
@@ -203,3 +211,8 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
         }
     }
 }
+
+std::vector<glm::mat4> TinyGLTFLoader::getInverseBindMatrices() const {
+    return getBufferData<glm::mat4>(model.skins[0].inverseBindMatrices);
+}
+

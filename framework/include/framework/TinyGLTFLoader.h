@@ -4,6 +4,7 @@
 
 class TinyGLTFLoader {
     tinygltf::Model model;
+    std::vector<int> parent; //Parent of each bone. The value is the index of the bone parent
 
     template <typename T>
     std::vector<T> getAttributeData(const tinygltf::Primitive& primitive, const std::string& attributeName) {
@@ -28,6 +29,8 @@ class TinyGLTFLoader {
     static void setupMeshesInScene(std::vector<Vertex>& vertices, const tinygltf::Node& node);
 
     void printGLTFBoneTransformations(Mesh& mesh) const;
+
+    [[nodiscard]] std::vector<glm::mat4> getInverseBindMatrices() const;
 
 public:
     explicit TinyGLTFLoader(const std::filesystem::path& file);
