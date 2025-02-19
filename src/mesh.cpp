@@ -1,5 +1,6 @@
 #include "mesh.h"
 #include <framework/disable_all_warnings.h>
+#include <framework/TinyGLTFLoader.h>
 DISABLE_WARNINGS_PUSH()
 #include <fmt/format.h>
 DISABLE_WARNINGS_POP()
@@ -87,7 +88,7 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& fileP
     if(!std::filesystem::exists(filePath)) throw MeshLoadingException(fmt::format("File {} does not exist", filePath.string().c_str()));
 
     // Generate GPU-side meshes for all sub-meshes
-    std::vector<Mesh> subMeshes = loadMeshGLTF(filePath);
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(filePath).toMesh();
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
 

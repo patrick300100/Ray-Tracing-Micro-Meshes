@@ -4,6 +4,8 @@
 // Always include window first (because it includes glfw, which includes GL which needs to be included AFTER glew).
 // Can't wait for modules to fix this stuff...
 #include <framework/disable_all_warnings.h>
+
+#include "framework/TinyGLTFLoader.h"
 DISABLE_WARNINGS_PUSH()
 #include <glad/glad.h>
 // Include glad before glfw3
@@ -25,7 +27,7 @@ DISABLE_WARNINGS_POP()
 class Application {
 public:
     Application(): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45), m_texture(RESOURCE_ROOT "resources/checkerboard.png") {
-        mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/cilinder.gltf");
+        mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/cubeanim.gltf");
 
         try {
             m_defaultShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/shader_vert.glsl").addFS(RESOURCE_ROOT "shaders/shader_frag.glsl").build();

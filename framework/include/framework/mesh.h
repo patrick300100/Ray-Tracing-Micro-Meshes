@@ -73,7 +73,6 @@ struct Mesh {
 };
 
 [[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
-std::vector<Mesh> loadMeshGLTF(const std::filesystem::path& file);
 [[nodiscard]] Mesh mergeMeshes(std::span<const Mesh> meshes);
 void meshFlipX(Mesh& mesh);
 void meshFlipY(Mesh& mesh);
