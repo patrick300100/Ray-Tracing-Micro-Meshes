@@ -70,6 +70,10 @@ struct Mesh {
 
 	std::vector<Bone> bones;
 	std::vector<Animation> animation; //Animation for each bone
+
+	std::vector<glm::mat4> boneTransformations() const {
+		return {};
+	}
 };
 
 [[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
