@@ -69,7 +69,7 @@ struct Mesh {
 	Material material;
 
 	std::vector<Bone> bones;
-	Animation animation;
+	std::vector<Animation> animation; //Animation for each bone
 };
 
 [[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);

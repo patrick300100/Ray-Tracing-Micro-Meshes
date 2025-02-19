@@ -176,7 +176,15 @@ void printGLTFBoneTransformations(const tinygltf::Model& model, Mesh& mesh) {
         const auto& animation = model.animations[animIndex];
         std::cout << "Animation " << animIndex << ":\n";
 
-        for (const auto& channel : animation.channels) {
+        int boneIndex = -1;
+        for(int i = 0; i < animation.channels.size(); i++) {
+            if(i % 3 == 0) {
+                boneIndex++;
+                mesh.animation.emplace_back();
+            }
+
+            const auto& channel = animation.channels[i];
+
             int nodeIndex = channel.target_node;
             if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) continue;
 
@@ -190,7 +198,7 @@ void printGLTFBoneTransformations(const tinygltf::Model& model, Mesh& mesh) {
 
             int keyframeCount = timeAccessor.count;
 
-            mesh.animation.duration = std::max(mesh.animation.duration, timeAccessor.maxValues[0]);
+            mesh.animation[boneIndex].duration = std::max(mesh.animation[boneIndex].duration, timeAccessor.maxValues[0]);
 
             // Access transformation keyframes
             const auto& transformAccessor = model.accessors[sampler.output];
@@ -206,20 +214,20 @@ void printGLTFBoneTransformations(const tinygltf::Model& model, Mesh& mesh) {
                 if (channel.target_path == "translation") {
                     const glm::vec3* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
                     transform = glm::translate(glm::mat4(1.0f), translationData[k]);
-                    mesh.animation.translation.addTransformation(time, translationData[k]);
-                    mesh.animation.translation.setInterpolationMode(sampler.interpolation);
+                    mesh.animation[boneIndex].translation.addTransformation(time, translationData[k]);
+                    mesh.animation[boneIndex].translation.setInterpolationMode(sampler.interpolation);
                 }
                 else if (channel.target_path == "rotation") {
                     const glm::quat* rotationData = reinterpret_cast<const glm::quat*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
                     transform = glm::mat4_cast(rotationData[k]);
-                    mesh.animation.rotation.addTransformation(time, rotationData[k]);
-                    mesh.animation.rotation.setInterpolationMode(sampler.interpolation);
+                    mesh.animation[boneIndex].rotation.addTransformation(time, rotationData[k]);
+                    mesh.animation[boneIndex].rotation.setInterpolationMode(sampler.interpolation);
                 }
                 else if (channel.target_path == "scale") {
                     const glm::vec3* scaleData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
                     transform = glm::scale(glm::mat4(1.0f), scaleData[k]);
-                    mesh.animation.scale.addTransformation(time, scaleData[k]);
-                    mesh.animation.scale.setInterpolationMode(sampler.interpolation);
+                    mesh.animation[boneIndex].scale.addTransformation(time, scaleData[k]);
+                    mesh.animation[boneIndex].scale.setInterpolationMode(sampler.interpolation);
                 }
 
                 // Print matrix
@@ -353,8 +361,6 @@ std::vector<Mesh> loadMeshGLTF(const std::filesystem::path& file) {
         auto nodeIt = std::ranges::find_if(model.nodes, [&gltfMesh](const tinygltf::Node& node) { return node.name == gltfMesh.name; });
         applyNodeTransformation(myMesh.vertices, *nodeIt);
 
-        Animation anim;
-        myMesh.animation = anim;
         printGLTFBoneTransformations(model, myMesh);
 
         out.push_back(myMesh);

@@ -25,7 +25,7 @@ DISABLE_WARNINGS_POP()
 class Application {
 public:
     Application(): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45), m_texture(RESOURCE_ROOT "resources/checkerboard.png") {
-        mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/cubeanim.gltf");
+        mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/cilinder.gltf");
 
         try {
             m_defaultShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/shader_vert.glsl").addFS(RESOURCE_ROOT "shaders/shader_frag.glsl").build();
@@ -50,17 +50,19 @@ public:
             const glm::mat3 normalModelMatrix = glm::inverseTranspose(glm::mat3(m_modelMatrix));
 
             for(GPUMesh& m : mesh) {
-                auto transformationMatrix = m.cpuMesh.animation.transformationMatrix(glfwGetTime());
+                for(Animation& anim : m.cpuMesh.animation) {
+                    auto transformationMatrix = anim.transformationMatrix(glfwGetTime());
 
-                m_defaultShader.bind();
-                glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
-                //Uncomment this line when you use the modelMatrix (or fragmentPosition)
-                //glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(m_modelMatrix));
-                glUniformMatrix3fv(2, 1, GL_FALSE, glm::value_ptr(normalModelMatrix));
-                glUniform1i(4, GL_FALSE);
-                glUniform1i(5, m_useMaterial);
-                glUniformMatrix4fv(6, 1, GL_FALSE, glm::value_ptr(transformationMatrix));
-                m.draw(m_defaultShader);
+                    m_defaultShader.bind();
+                    glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
+                    //Uncomment this line when you use the modelMatrix (or fragmentPosition)
+                    //glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(m_modelMatrix));
+                    glUniformMatrix3fv(2, 1, GL_FALSE, glm::value_ptr(normalModelMatrix));
+                    glUniform1i(4, GL_FALSE);
+                    glUniform1i(5, m_useMaterial);
+                    glUniformMatrix4fv(6, 1, GL_FALSE, glm::value_ptr(transformationMatrix));
+                    m.draw(m_defaultShader);
+                }
             }
 
             m_window.swapBuffers();
