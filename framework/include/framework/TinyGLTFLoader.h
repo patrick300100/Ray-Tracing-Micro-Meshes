@@ -7,7 +7,12 @@ class TinyGLTFLoader {
 
     template <typename T>
     std::vector<T> getAttributeData(const tinygltf::Primitive& primitive, const std::string& attributeName) {
-        const tinygltf::Accessor& accessor = model.accessors[primitive.attributes.at(attributeName)];
+        return getBufferData<T>(primitive.attributes.at(attributeName));
+    }
+
+    template <typename T>
+    std::vector<T> getBufferData(const int index) const {
+        const tinygltf::Accessor& accessor = model.accessors[index];
         const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
         const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
 

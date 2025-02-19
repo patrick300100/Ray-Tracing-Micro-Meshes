@@ -156,14 +156,11 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
             const auto& sampler = animation.samplers[channel.sampler];
 
             // Access time keyframes
-            const auto& timeAccessor = model.accessors[sampler.input];
-            const auto& timeBufferView = model.bufferViews[timeAccessor.bufferView];
-            const auto& timeBuffer = model.buffers[timeBufferView.buffer];
-            const float* timeData = reinterpret_cast<const float*>(&timeBuffer.data[timeBufferView.byteOffset + timeAccessor.byteOffset]);
+            const auto timeData = getBufferData<float>(sampler.input);
 
-            int keyframeCount = timeAccessor.count;
+            int keyframeCount = timeData.size();
 
-            mesh.animation[boneIndex].duration = std::max(mesh.animation[boneIndex].duration, timeAccessor.maxValues[0]);
+            mesh.animation[boneIndex].duration = std::max(mesh.animation[boneIndex].duration, timeData.back());
 
             // Access transformation keyframes
             const auto& transformAccessor = model.accessors[sampler.output];

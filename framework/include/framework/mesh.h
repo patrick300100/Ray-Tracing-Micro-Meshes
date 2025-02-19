@@ -49,7 +49,7 @@ struct Animation {
 	TransformationChannel<glm::vec3> translation;
 	TransformationChannel<glm::quat> rotation;
 	TransformationChannel<glm::vec3> scale;
-	double duration = 0.0;
+	float duration = 0.0;
 
 	glm::mat4 transformationMatrix(float currentTime) {
 		auto t1 = translation.getTransformation(currentTime);
