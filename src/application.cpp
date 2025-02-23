@@ -56,7 +56,7 @@ public:
                 skinningShader.bind();
                 glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
 
-                auto bTs = m.cpuMesh.boneTransformations();
+                auto bTs = m.cpuMesh.boneTransformations(glfwGetTime());
                 glUniformMatrix4fv(1, 4, GL_FALSE, &bTs[0][0][0]);
 
                 m.draw(m_defaultShader);

@@ -83,7 +83,7 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
 
             // Extract per-vertex bone weights
             if(primitive.attributes.contains("WEIGHTS_0")) {
-                const auto weights = getAttributeData<glm::vec4>(primitive, "TEXCOORD_0");
+                const auto weights = getAttributeData<glm::vec4>(primitive, "WEIGHTS_0");
 
                 for(size_t i = 0; i < weights.size(); i++) {
                     vertices[i].boneWeights = weights[i];
@@ -115,6 +115,9 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
         setupMeshesInScene(myMesh.vertices, *nodeIt);
 
         printGLTFBoneTransformations(myMesh);
+
+        myMesh.parent = std::move(parent);
+        myMesh.ibms = std::move(getInverseBindMatrices());
 
         out.push_back(myMesh);
     }
@@ -151,12 +154,13 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
 
         int boneIndex = -1;
         for(int i = 0; i < animation.channels.size(); i++) {
+            const auto& channel = animation.channels[i];
+
             if(i % 3 == 0) {
                 boneIndex++;
                 mesh.animation.emplace_back();
+                mesh.animation[boneIndex].name = model.nodes[channel.target_node].name;
             }
-
-            const auto& channel = animation.channels[i];
 
             int nodeIndex = channel.target_node;
             if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) continue;
@@ -204,8 +208,8 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
                 std::cout << "    Keyframe " << k << " (Time: " << time << "s):\n";
                 for (int i = 0; i < 4; ++i) {
                     std::cout << "      ["
-                              << transform[i][0] << ", " << transform[i][1] << ", "
-                              << transform[i][2] << ", " << transform[i][3] << "]\n";
+                              << transform[0][i] << ", " << transform[1][i] << ", "
+                              << transform[2][i] << ", " << transform[3][i] << "]\n";
                 }
             }
         }
