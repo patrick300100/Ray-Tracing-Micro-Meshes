@@ -15,9 +15,15 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
 
     parent.resize(model.skins[0].joints.size(), -1);
 
-    for(const auto nodeIndex : model.skins[0].joints) {
-        for(const auto child : model.nodes[nodeIndex].children) {
-            parent[child] = nodeIndex;
+    auto joints = model.skins[0].joints;
+    for(int i = 0; i < joints.size(); i++) {
+        auto joint = joints[i];
+
+        for(const auto child : model.nodes[joint].children) {
+            auto it = std::ranges::find(joints, child);
+            int childIndex = std::distance(joints.begin(), it);
+
+            parent[childIndex] = i;
         }
     }
 }
