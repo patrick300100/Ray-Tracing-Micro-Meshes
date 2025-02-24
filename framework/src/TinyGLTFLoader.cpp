@@ -186,19 +186,20 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
                 glm::mat4 transform = glm::mat4(1.0f);
 
                 if (channel.target_path == "translation") {
-                    const glm::vec3* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
+                    const auto* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
                     transform = glm::translate(glm::mat4(1.0f), translationData[k]);
                     mesh.animation[boneIndex].translation.addTransformation(time, translationData[k]);
                     mesh.animation[boneIndex].translation.setInterpolationMode(sampler.interpolation);
                 }
                 else if (channel.target_path == "rotation") {
-                    const glm::quat* rotationData = reinterpret_cast<const glm::quat*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    transform = glm::mat4_cast(rotationData[k]);
-                    mesh.animation[boneIndex].rotation.addTransformation(time, rotationData[k]);
+                    const auto* rotationDataCorrect = reinterpret_cast<const float*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
+                    auto quat = glm::quat(rotationDataCorrect[4 * k + 3], rotationDataCorrect[4 * k + 0], rotationDataCorrect[4 * k + 1], rotationDataCorrect[4 * k + 2]);
+                    transform = glm::mat4_cast(quat);
+                    mesh.animation[boneIndex].rotation.addTransformation(time, quat);
                     mesh.animation[boneIndex].rotation.setInterpolationMode(sampler.interpolation);
                 }
                 else if (channel.target_path == "scale") {
-                    const glm::vec3* scaleData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
+                    const auto* scaleData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
                     transform = glm::scale(glm::mat4(1.0f), scaleData[k]);
                     mesh.animation[boneIndex].scale.addTransformation(time, scaleData[k]);
                     mesh.animation[boneIndex].scale.setInterpolationMode(sampler.interpolation);
