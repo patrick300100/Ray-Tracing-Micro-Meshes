@@ -154,10 +154,7 @@ void TinyGLTFLoader::setupMeshesInScene(std::vector<Vertex>& vertices, const tin
 }
 
 void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
-    for (size_t animIndex = 0; animIndex < model.animations.size(); ++animIndex) {
-        const auto& animation = model.animations[animIndex];
-        std::cout << "Animation " << animIndex << ":\n";
-
+    for(const auto & animation : model.animations) {
         int boneIndex = -1;
         for(int i = 0; i < animation.channels.size(); i++) {
             const auto& channel = animation.channels[i];
@@ -185,38 +182,24 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
             const auto& transformBufferView = model.bufferViews[transformAccessor.bufferView];
             const auto& transformBuffer = model.buffers[transformBufferView.buffer];
 
-            // Print keyframe transformations
-            std::cout << "  Node " << nodeIndex << " (" << model.nodes[nodeIndex].name << ") " << " (" << channel.target_path << "):\n";
             for (int k = 0; k < keyframeCount; ++k) {
                 float time = timeData[k];
-                glm::mat4 transform = glm::mat4(1.0f);
 
                 if (channel.target_path == "translation") {
                     const auto* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    transform = glm::translate(glm::mat4(1.0f), translationData[k]);
                     mesh.animation[boneIndex].translation.addTransformation(time, translationData[k]);
                     mesh.animation[boneIndex].translation.setInterpolationMode(sampler.interpolation);
                 }
                 else if (channel.target_path == "rotation") {
                     const auto* rotationDataCorrect = reinterpret_cast<const float*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
                     auto quat = glm::quat(rotationDataCorrect[4 * k + 3], rotationDataCorrect[4 * k + 0], rotationDataCorrect[4 * k + 1], rotationDataCorrect[4 * k + 2]);
-                    transform = glm::mat4_cast(quat);
                     mesh.animation[boneIndex].rotation.addTransformation(time, quat);
                     mesh.animation[boneIndex].rotation.setInterpolationMode(sampler.interpolation);
                 }
                 else if (channel.target_path == "scale") {
                     const auto* scaleData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    transform = glm::scale(glm::mat4(1.0f), scaleData[k]);
                     mesh.animation[boneIndex].scale.addTransformation(time, scaleData[k]);
                     mesh.animation[boneIndex].scale.setInterpolationMode(sampler.interpolation);
-                }
-
-                // Print matrix
-                std::cout << "    Keyframe " << k << " (Time: " << time << "s):\n";
-                for (int i = 0; i < 4; ++i) {
-                    std::cout << "      ["
-                              << transform[0][i] << ", " << transform[1][i] << ", "
-                              << transform[2][i] << ", " << transform[3][i] << "]\n";
                 }
             }
         }
