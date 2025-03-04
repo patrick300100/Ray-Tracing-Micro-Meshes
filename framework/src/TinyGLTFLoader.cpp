@@ -31,7 +31,8 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
 std::vector<Mesh> TinyGLTFLoader::toMesh() {
     std::vector<Mesh> out;
 
-    for(const tinygltf::Mesh& gltfMesh : model.meshes) {
+    for(int i = 0; i < model.meshes.size(); i++) {
+        const auto& gltfMesh = model.meshes[i];
         Mesh myMesh;
 
         for(const tinygltf::Primitive& primitive : gltfMesh.primitives) {
@@ -117,8 +118,8 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
             myMesh.triangles = std::move(triangles);
         }
 
-        auto nodeIt = std::ranges::find_if(model.nodes, [&gltfMesh](const tinygltf::Node& node) { return node.name == gltfMesh.name; });
-        setupMeshesInScene(myMesh.vertices, *nodeIt);
+        auto node = *std::ranges::find(model.nodes, i, &tinygltf::Node::mesh); //Find node corresponding to this mesh
+        setupMeshesInScene(myMesh.vertices, node);
 
         printGLTFBoneTransformations(myMesh);
 
