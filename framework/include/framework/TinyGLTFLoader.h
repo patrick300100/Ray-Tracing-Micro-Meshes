@@ -28,7 +28,7 @@ class TinyGLTFLoader {
      */
     static void setupMeshesInScene(std::vector<Vertex>& vertices, const tinygltf::Node& node);
 
-    void printGLTFBoneTransformations(Mesh& mesh) const;
+    void boneTransformations(Mesh& mesh) const;
 
     [[nodiscard]] std::vector<glm::mat4> getInverseBindMatrices() const;
 

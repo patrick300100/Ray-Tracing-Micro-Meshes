@@ -121,7 +121,7 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
         auto node = *std::ranges::find(model.nodes, i, &tinygltf::Node::mesh); //Find node corresponding to this mesh
         setupMeshesInScene(myMesh.vertices, node);
 
-        printGLTFBoneTransformations(myMesh);
+        boneTransformations(myMesh);
 
         myMesh.parent = std::move(parent);
         myMesh.ibms = std::move(getInverseBindMatrices());
@@ -154,8 +154,8 @@ void TinyGLTFLoader::setupMeshesInScene(std::vector<Vertex>& vertices, const tin
     }
 }
 
-void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
-    for(const auto & animation : model.animations) {
+void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
+    for(const auto& animation : model.animations) {
         int boneIndex = -1;
         for(int i = 0; i < animation.channels.size(); i++) {
             const auto& channel = animation.channels[i];
@@ -166,15 +166,10 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
                 mesh.animation[boneIndex].name = model.nodes[channel.target_node].name;
             }
 
-            int nodeIndex = channel.target_node;
-            if (nodeIndex < 0 || nodeIndex >= model.nodes.size()) continue;
-
             const auto& sampler = animation.samplers[channel.sampler];
 
             // Access time keyframes
             const auto timeData = getBufferData<float>(sampler.input);
-
-            int keyframeCount = timeData.size();
 
             mesh.animation[boneIndex].duration = std::max(mesh.animation[boneIndex].duration, timeData.back());
 
@@ -183,7 +178,7 @@ void TinyGLTFLoader::printGLTFBoneTransformations(Mesh& mesh) const {
             const auto& transformBufferView = model.bufferViews[transformAccessor.bufferView];
             const auto& transformBuffer = model.buffers[transformBufferView.buffer];
 
-            for (int k = 0; k < keyframeCount; ++k) {
+            for (int k = 0; k < timeData.size(); ++k) {
                 float time = timeData[k];
 
                 if (channel.target_path == "translation") {
