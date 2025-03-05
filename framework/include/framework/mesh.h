@@ -77,7 +77,7 @@ struct Mesh {
 		return transformations;
 	}
 
-	glm::mat4 globalTransform(const float currentTime, int index) {
+	glm::mat4 globalTransform(const float currentTime, const int index) {
 		if(parent[index] == -1) return bones[index].transformationMatrix(currentTime);
 
 		return globalTransform(currentTime, parent[index]) * bones[index].transformationMatrix(currentTime);

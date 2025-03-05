@@ -44,8 +44,8 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
                 const auto positions = getAttributeData<glm::vec3>(primitive, "POSITION");
 
                 vertices.resize(positions.size());
-                for(size_t i = 0; i < positions.size(); i++) {
-                    vertices[i].position = positions[i];
+                for(size_t j = 0; j < positions.size(); j++) {
+                    vertices[j].position = positions[j];
                 }
             }
 
@@ -53,8 +53,8 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
             if(primitive.attributes.contains("NORMAL")) {
                 const auto normals = getAttributeData<glm::vec3>(primitive, "NORMAL");
 
-                for(size_t i = 0; i < normals.size(); i++) {
-                    vertices[i].normal = normals[i];
+                for(size_t j = 0; j < normals.size(); j++) {
+                    vertices[j].normal = normals[j];
                 }
             }
 
@@ -62,8 +62,8 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
             if(primitive.attributes.contains("TEXCOORD_0")) {
                 const auto texCoords = getAttributeData<glm::vec2>(primitive, "TEXCOORD_0");
 
-                for(size_t i = 0; i < texCoords.size(); i++) {
-                    vertices[i].texCoord = texCoords[i];
+                for(size_t j = 0; j < texCoords.size(); j++) {
+                    vertices[j].texCoord = texCoords[j];
                 }
             }
 
@@ -76,14 +76,14 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
                 if(accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
                     const auto* joints = reinterpret_cast<const glm::u8vec4*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
 
-                    for(size_t i = 0; i < accessor.count; i++) {
-                        vertices[i].boneIndices = glm::ivec4(joints[i]);
+                    for(size_t j = 0; j < accessor.count; j++) {
+                        vertices[j].boneIndices = glm::ivec4(joints[j]);
                     }
                 } else if(accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                     const auto* joints = reinterpret_cast<const glm::u16vec4*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
 
-                    for(size_t i = 0; i < accessor.count; i++) {
-                        vertices[i].boneIndices = glm::ivec4(joints[i]);
+                    for(size_t j = 0; j < accessor.count; j++) {
+                        vertices[j].boneIndices = glm::ivec4(joints[j]);
                     }
                 }
             }
@@ -92,8 +92,8 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
             if(primitive.attributes.contains("WEIGHTS_0")) {
                 const auto weights = getAttributeData<glm::vec4>(primitive, "WEIGHTS_0");
 
-                for(size_t i = 0; i < weights.size(); i++) {
-                    vertices[i].boneWeights = weights[i];
+                for(size_t j = 0; j < weights.size(); j++) {
+                    vertices[j].boneWeights = weights[j];
                 }
             }
 
@@ -104,13 +104,13 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
 
             if(indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                 const auto* indices = reinterpret_cast<const uint16_t*>(&indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset]);
-                for(size_t i = 0; i < indexAccessor.count; i += 3) {
-                    triangles.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
+                for(size_t j = 0; j < indexAccessor.count; j += 3) {
+                    triangles.emplace_back(indices[j], indices[j + 1], indices[j + 2]);
                 }
             } else if(indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
                 const auto* indices = reinterpret_cast<const uint32_t*>(&indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset]);
-                for(size_t i = 0; i < indexAccessor.count; i += 3) {
-                    triangles.emplace_back(indices[i], indices[i + 1], indices[i + 2]);
+                for(size_t j = 0; j < indexAccessor.count; j += 3) {
+                    triangles.emplace_back(indices[j], indices[j + 1], indices[j + 2]);
                 }
             }
 
@@ -176,7 +176,7 @@ void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
             const auto& transformBuffer = model.buffers[transformBufferView.buffer];
 
             for (int k = 0; k < timeData.size(); ++k) {
-                float time = timeData[k];
+                const float time = timeData[k];
 
                 if (channel.target_path == "translation") {
                     const auto* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
@@ -185,7 +185,7 @@ void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
                 }
                 else if (channel.target_path == "rotation") {
                     const auto* rotationDataCorrect = reinterpret_cast<const float*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    auto quat = glm::quat(rotationDataCorrect[4 * k + 3], rotationDataCorrect[4 * k + 0], rotationDataCorrect[4 * k + 1], rotationDataCorrect[4 * k + 2]);
+                    const auto quat = glm::quat(rotationDataCorrect[4 * k + 3], rotationDataCorrect[4 * k + 0], rotationDataCorrect[4 * k + 1], rotationDataCorrect[4 * k + 2]);
                     mesh.bones[boneIndex].rotation.addTransformation(time, quat);
                     mesh.bones[boneIndex].rotation.setInterpolationMode(sampler.interpolation);
                 }
