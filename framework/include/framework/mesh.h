@@ -41,16 +41,9 @@ struct Material {
 };
 
 struct Bone {
-	std::string name;
-	glm::mat4 offsetMatrix; // Transforms from mesh space to bone space
-};
-
-struct Animation {
-	std::string name; //Bone name
 	TransformationChannel<glm::vec3> translation;
 	TransformationChannel<glm::quat> rotation;
 	TransformationChannel<glm::vec3> scale;
-	float duration = 0.0;
 
 	[[nodiscard]] glm::mat4 transformationMatrix(const float currentTime) {
 		auto t1 = translation.getTransformation(currentTime);
@@ -62,15 +55,12 @@ struct Animation {
 };
 
 struct Mesh {
-	// Vertices contain the vertex positions and normals of the mesh.
 	std::vector<Vertex> vertices;
-	// A triangle contains a triplet of values corresponding to the indices of the 3 vertices in the vertices array.
-	std::vector<glm::uvec3> triangles;
+	std::vector<glm::uvec3> triangles; //Contains a triplet of values corresponding to the indices of the 3 vertices in the vertices array.
 
 	Material material;
 
 	std::vector<Bone> bones;
-	std::vector<Animation> animation; //Animation for each bone
 
 	std::vector<int> parent;
 	std::vector<glm::mat4> ibms;
@@ -78,7 +68,7 @@ struct Mesh {
 	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float currentTime) {
 		std::vector<glm::mat4> transformations = {};
 
-		for(int i = 0; i < animation.size(); i++) {
+		for(int i = 0; i < bones.size(); i++) {
 			auto globalT = globalTransform(currentTime, i);
 
 			transformations.push_back(globalT * ibms[i]);
@@ -88,9 +78,9 @@ struct Mesh {
 	}
 
 	glm::mat4 globalTransform(const float currentTime, int index) {
-		if(parent[index] == -1) return animation[index].transformationMatrix(currentTime);
+		if(parent[index] == -1) return bones[index].transformationMatrix(currentTime);
 
-		return globalTransform(currentTime, parent[index]) * animation[index].transformationMatrix(currentTime);
+		return globalTransform(currentTime, parent[index]) * bones[index].transformationMatrix(currentTime);
 	}
 };
 
