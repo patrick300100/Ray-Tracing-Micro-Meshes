@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.29 FATAL_ERROR)
 project(ComputerGraphics C CXX)
+
+set(CMAKE_CXX_STANDARD 23)
 
 # Set this before including framework such that it knows to use the OpenGL4.5 version of GLAD
 if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/framework")
@@ -16,7 +18,6 @@ add_executable(Micro_Meshes
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
-target_compile_features(Micro_Meshes PRIVATE cxx_std_20)
 target_link_libraries(Micro_Meshes PRIVATE CGFramework)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
