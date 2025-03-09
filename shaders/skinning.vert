@@ -1,7 +1,10 @@
 #version 450
 
+layout(std140, binding = 1) uniform BoneMatrices {
+    mat4 boneTransforms[50];
+};
+
 layout(location = 0) uniform mat4 mvpMatrix;
-layout(location = 1) uniform mat4 boneTransforms[4];
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
