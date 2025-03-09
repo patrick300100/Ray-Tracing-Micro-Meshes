@@ -125,7 +125,6 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
         boneTransformations(myMesh);
 
         myMesh.parent = std::move(parent);
-        myMesh.ibms = std::move(getInverseBindMatrices());
 
         out.push_back(myMesh);
     }
@@ -156,9 +155,12 @@ void TinyGLTFLoader::setupMeshesInScene(std::vector<Vertex>& vertices, const tin
 }
 
 void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
+    const auto& ibms = getBufferData<glm::mat4>(model.skins[0].inverseBindMatrices);
+
     for(const auto& skin : model.skins) {
-        for(const auto nodeID : skin.joints) {
+        for(const auto& [nodeID, ibm] : std::views::zip(skin.joints, ibms)) {
             Bone b;
+            b.ibm = ibm;
 
             for(const auto& animation : model.animations) {
                 for(const auto& channel : animation.channels) {
@@ -193,8 +195,3 @@ void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
         }
     }
 }
-
-std::vector<glm::mat4> TinyGLTFLoader::getInverseBindMatrices() const {
-    return getBufferData<glm::mat4>(model.skins[0].inverseBindMatrices);
-}
-

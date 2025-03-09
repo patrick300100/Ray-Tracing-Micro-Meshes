@@ -30,8 +30,6 @@ class TinyGLTFLoader {
 
     void boneTransformations(Mesh& mesh) const;
 
-    [[nodiscard]] std::vector<glm::mat4> getInverseBindMatrices() const;
-
 public:
     explicit TinyGLTFLoader(const std::filesystem::path& file);
 

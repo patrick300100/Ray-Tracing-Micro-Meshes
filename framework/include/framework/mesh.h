@@ -44,11 +44,12 @@ struct Bone {
 	TransformationChannel<glm::vec3> translation;
 	TransformationChannel<glm::quat> rotation;
 	TransformationChannel<glm::vec3> scale;
+	glm::mat4 ibm{};
 
 	[[nodiscard]] glm::mat4 transformationMatrix(const float currentTime) {
-		auto t1 = translation.getTransformation(currentTime);
-		auto t2 = rotation.getTransformation(currentTime);
-		auto t3 = scale.getTransformation(currentTime);
+		const auto t1 = translation.getTransformation(currentTime);
+		const auto t2 = rotation.getTransformation(currentTime);
+		const auto t3 = scale.getTransformation(currentTime);
 
 		return glm::translate(glm::mat4(1.0f), t1) * glm::mat4_cast(t2) * glm::scale(glm::mat4(1.0f), t3);
 	}
@@ -63,7 +64,6 @@ struct Mesh {
 	std::vector<Bone> bones;
 
 	std::vector<int> parent;
-	std::vector<glm::mat4> ibms;
 
 	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float currentTime) {
 		std::vector<glm::mat4> transformations = {};
@@ -71,7 +71,7 @@ struct Mesh {
 		for(int i = 0; i < bones.size(); i++) {
 			auto globalT = globalTransform(currentTime, i);
 
-			transformations.push_back(globalT * ibms[i]);
+			transformations.push_back(globalT * bones[i].ibm);
 		}
 
 		return transformations;
