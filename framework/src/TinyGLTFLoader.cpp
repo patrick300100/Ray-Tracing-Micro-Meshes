@@ -1,6 +1,7 @@
 #include "TinyGLTFLoader.h"
 
 #include <iostream>
+#include <ranges>
 #include <glm/gtc/type_ptr.hpp>
 
 TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
@@ -155,46 +156,40 @@ void TinyGLTFLoader::setupMeshesInScene(std::vector<Vertex>& vertices, const tin
 }
 
 void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
-    for(const auto& animation : model.animations) {
-        int boneIndex = -1;
-        for(int i = 0; i < animation.channels.size(); i++) {
-            const auto& channel = animation.channels[i];
+    for(const auto& skin : model.skins) {
+        for(const auto nodeID : skin.joints) {
+            Bone b;
 
-            if(i % 3 == 0) {
-                boneIndex++;
-                mesh.bones.emplace_back();
-            }
+            for(const auto& animation : model.animations) {
+                for(const auto& channel : animation.channels) {
+                    if(channel.target_node == nodeID) {
+                        const auto& sampler = animation.samplers[channel.sampler];
+                        const auto& timeData = getBufferData<float>(sampler.input);
 
-            const auto& sampler = animation.samplers[channel.sampler];
+                        if(channel.target_path == "translation") {
+                            b.translation.addTransformations(timeData, getBufferData<glm::vec3>(sampler.output));
+                            b.translation.setInterpolationMode(sampler.interpolation);
+                        }
+                        else if(channel.target_path == "scale") {
+                            b.scale.addTransformations(timeData, getBufferData<glm::vec3>(sampler.output));
+                            b.scale.setInterpolationMode(sampler.interpolation);
+                        }
+                        else if(channel.target_path == "rotation") { //Rotation needs a bit more work, because we manually need to convert to quaternions
+                            const auto& rotationData = getBufferData<glm::vec4>(sampler.output);
 
-            // Access time keyframes
-            const auto timeData = getBufferData<float>(sampler.input);
+                            std::vector<glm::quat> quatRotations(rotationData.size());
+                            std::transform(rotationData.begin(), rotationData.end(), quatRotations.begin(), [](glm::vec4 v) {
+                                return glm::quat(v[3], v[0], v[1], v[2]);
+                            });
 
-            // Access transformation keyframes
-            const auto& transformAccessor = model.accessors[sampler.output];
-            const auto& transformBufferView = model.bufferViews[transformAccessor.bufferView];
-            const auto& transformBuffer = model.buffers[transformBufferView.buffer];
-
-            for (int k = 0; k < timeData.size(); ++k) {
-                const float time = timeData[k];
-
-                if (channel.target_path == "translation") {
-                    const auto* translationData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    mesh.bones[boneIndex].translation.addTransformation(time, translationData[k]);
-                    mesh.bones[boneIndex].translation.setInterpolationMode(sampler.interpolation);
-                }
-                else if (channel.target_path == "rotation") {
-                    const auto* rotationDataCorrect = reinterpret_cast<const float*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    const auto quat = glm::quat(rotationDataCorrect[4 * k + 3], rotationDataCorrect[4 * k + 0], rotationDataCorrect[4 * k + 1], rotationDataCorrect[4 * k + 2]);
-                    mesh.bones[boneIndex].rotation.addTransformation(time, quat);
-                    mesh.bones[boneIndex].rotation.setInterpolationMode(sampler.interpolation);
-                }
-                else if (channel.target_path == "scale") {
-                    const auto* scaleData = reinterpret_cast<const glm::vec3*>(&transformBuffer.data[transformBufferView.byteOffset + transformAccessor.byteOffset]);
-                    mesh.bones[boneIndex].scale.addTransformation(time, scaleData[k]);
-                    mesh.bones[boneIndex].scale.setInterpolationMode(sampler.interpolation);
+                            b.rotation.addTransformations(timeData, quatRotations);
+                            b.rotation.setInterpolationMode(sampler.interpolation);
+                        }
+                    }
                 }
             }
+
+            mesh.bones.push_back(b);
         }
     }
 }

@@ -38,8 +38,12 @@ class TransformationChannel {
 public:
     TransformationChannel() = default;
 
-    void addTransformation(float time, T transformation) {
-        transformations[time] = transformation;
+    void addTransformations(std::vector<float> time, std::vector<T> transformation) {
+        if(time.size() != transformation.size()) throw std::logic_error("Weird, the vectors have different size. This usually does not happen.");
+
+        for(int i = 0; i < time.size(); i++) {
+            transformations[time[i]] = transformation[i];
+        }
     }
 
     void setInterpolationMode(const std::string& im) {
