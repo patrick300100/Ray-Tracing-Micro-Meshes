@@ -45,7 +45,7 @@ public:
     bool hasTextureCoords() const;
 
     // Bind VAO and call glDrawElements.
-    void draw(const Shader& drawingShader);
+    void draw(const std::vector<glm::mat4>& boneMatrices) const;
 
     Mesh cpuMesh;
 
@@ -61,5 +61,5 @@ private:
     GLuint m_ibo { INVALID };
     GLuint m_vbo { INVALID };
     GLuint m_vao { INVALID };
-    GLuint m_uboMaterial { INVALID };
+    GLuint m_uboBoneMatrices { INVALID };
 };

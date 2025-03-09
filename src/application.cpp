@@ -57,15 +57,7 @@ public:
                 glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
 
                 auto bTs = m.cpuMesh.boneTransformations(glfwGetTime());
-
-                GLuint ubo;
-                glGenBuffers(1, &ubo);
-                glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-                glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 50, bTs.data(), GL_STREAM_DRAW);
-
-                glBindBufferBase(GL_UNIFORM_BUFFER, 1, ubo);
-
-                m.draw(m_defaultShader);
+                m.draw(bTs);
             }
 
             m_window.swapBuffers();

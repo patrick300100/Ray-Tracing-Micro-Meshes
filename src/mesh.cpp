@@ -7,20 +7,11 @@ DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
 
-GPUMaterial::GPUMaterial(const Material& material) :
-    kd(material.kd),
-    ks(material.ks),
-    shininess(material.shininess),
-    transparency(material.transparency)
-{}
-
-GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh)
-{
-    // Create uniform buffer to store mesh material (https://learnopengl.com/Advanced-OpenGL/Advanced-GLSL)
-    GPUMaterial gpuMaterial(cpuMesh.material);
-    glGenBuffers(1, &m_uboMaterial);
-    glBindBuffer(GL_UNIFORM_BUFFER, m_uboMaterial);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUMaterial), &gpuMaterial, GL_STATIC_READ);
+GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh) {
+    //Create uniform buffer to store bone transformations
+    glGenBuffers(1, &m_uboBoneMatrices);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_uboBoneMatrices);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
     // Figure out if this mesh has texture coordinates
     m_hasTextureCoords = static_cast<bool>(cpuMesh.material.kdTexture);
@@ -106,11 +97,9 @@ bool GPUMesh::hasTextureCoords() const
     return m_hasTextureCoords;
 }
 
-void GPUMesh::draw(const Shader& drawingShader)
-{
-    // Bind material data uniform (we assume that the uniform buffer objects is always called 'Material')
-    // Yes, we could define the binding inside the shader itself, but that would break on OpenGL versions below 4.2
-    drawingShader.bindUniformBlock("Material", 0, m_uboMaterial);
+void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, boneMatrices.size() * sizeof(glm::mat4), boneMatrices.data());
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_uboBoneMatrices);
     
     // Draw the mesh's triangles
     glBindVertexArray(m_vao);
@@ -125,14 +114,14 @@ void GPUMesh::moveInto(GPUMesh&& other)
     m_ibo = other.m_ibo;
     m_vbo = other.m_vbo;
     m_vao = other.m_vao;
-    m_uboMaterial = other.m_uboMaterial;
+    m_uboBoneMatrices = other.m_uboBoneMatrices;
 
     other.m_numIndices = 0;
     other.m_hasTextureCoords = other.m_hasTextureCoords;
     other.m_ibo = INVALID;
     other.m_vbo = INVALID;
     other.m_vao = INVALID;
-    other.m_uboMaterial = INVALID;
+    other.m_uboBoneMatrices = INVALID;
 }
 
 void GPUMesh::freeGpuMemory()
@@ -143,6 +132,6 @@ void GPUMesh::freeGpuMemory()
         glDeleteBuffers(1, &m_vbo);
     if (m_ibo != INVALID)
         glDeleteBuffers(1, &m_ibo);
-    if (m_uboMaterial != INVALID)
-        glDeleteBuffers(1, &m_uboMaterial);
+    if (m_uboBoneMatrices != INVALID)
+        glDeleteBuffers(1, &m_uboBoneMatrices);
 }
