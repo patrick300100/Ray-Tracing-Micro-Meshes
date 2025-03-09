@@ -5,10 +5,9 @@
 #include <glm/gtc/type_ptr.hpp>
 
 TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
-    tinygltf::TinyGLTF loader;
     std::string err, warn;
 
-    if(!loader.LoadASCIIFromFile(&model, &err, &warn, file.string())) {
+    if(tinygltf::TinyGLTF loader; !loader.LoadASCIIFromFile(&model, &err, &warn, file.string())) {
         throw std::runtime_error("Failed to load GLTF: " + err);
     }
 
@@ -18,11 +17,9 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
 
     auto joints = model.skins[0].joints;
     for(int i = 0; i < joints.size(); i++) {
-        auto joint = joints[i];
-
-        for(const auto child : model.nodes[joint].children) {
-            auto it = std::ranges::find(joints, child);
-            int childIndex = std::distance(joints.begin(), it);
+        for(const auto joint = joints[i]; const auto child : model.nodes[joint].children) {
+            const auto it = std::ranges::find(joints, child);
+            const auto childIndex = std::distance(joints.begin(), it);
 
             parent[childIndex] = i;
         }
@@ -70,22 +67,18 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
 
             // Extract per-vertex bone indices
             if(primitive.attributes.contains("JOINTS_0")) {
-                const tinygltf::Accessor& accessor = model.accessors[primitive.attributes.at("JOINTS_0")];
-                const tinygltf::BufferView& bufferView = model.bufferViews[accessor.bufferView];
-                const tinygltf::Buffer& buffer = model.buffers[bufferView.buffer];
+                auto processJoints = [&]<typename T0>(T0 /*type*/) {
+                    const auto joints = getAttributeData<T0>(primitive, "JOINTS_0");
 
-                if(accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
-                    const auto* joints = reinterpret_cast<const glm::u8vec4*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
-
-                    for(size_t j = 0; j < accessor.count; j++) {
+                    for(int j = 0; j < joints.size(); j++) {
                         vertices[j].boneIndices = glm::ivec4(joints[j]);
                     }
-                } else if(accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                    const auto* joints = reinterpret_cast<const glm::u16vec4*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+                };
 
-                    for(size_t j = 0; j < accessor.count; j++) {
-                        vertices[j].boneIndices = glm::ivec4(joints[j]);
-                    }
+                switch(model.accessors[primitive.attributes.at("JOINTS_0")].componentType) {
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: processJoints(glm::u8vec4{}); break;
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: processJoints(glm::u16vec4{}); break;
+                    default: throw std::runtime_error("Component type cannot be processed for bone indices. Please add.");
                 }
             }
 
@@ -99,20 +92,18 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
             }
 
             // Extract vertex indices per triangle
-            const tinygltf::Accessor& indexAccessor = model.accessors[primitive.indices];
-            const tinygltf::BufferView& indexBufferView = model.bufferViews[indexAccessor.bufferView];
-            const tinygltf::Buffer& indexBuffer = model.buffers[indexBufferView.buffer];
+            auto processIndices = [&]<typename T0>(T0 /*type*/) {
+                const auto indices = getBufferData<T0>(primitive.indices);
+                
+                for(int j = 0; j < indices.size(); j += 3) {
+                    triangles.emplace_back(indices[j], indices[j + 1], indices[j + 2]);
+                }
+            };
 
-            if(indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
-                const auto* indices = reinterpret_cast<const uint16_t*>(&indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset]);
-                for(size_t j = 0; j < indexAccessor.count; j += 3) {
-                    triangles.emplace_back(indices[j], indices[j + 1], indices[j + 2]);
-                }
-            } else if(indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
-                const auto* indices = reinterpret_cast<const uint32_t*>(&indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset]);
-                for(size_t j = 0; j < indexAccessor.count; j += 3) {
-                    triangles.emplace_back(indices[j], indices[j + 1], indices[j + 2]);
-                }
+            switch(model.accessors[primitive.indices].componentType) {
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: processIndices(uint16_t{}); break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT: processIndices(uint32_t{}); break;
+                default: throw std::runtime_error("Component type cannot be processed for vertex indices. Please add.");
             }
 
             myMesh.vertices = std::move(vertices);

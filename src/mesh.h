@@ -15,16 +15,6 @@ struct MeshLoadingException : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-// Alignment directives are to comply with std140 alignment requirements (https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)#Memory_layout)
-struct GPUMaterial {
-    GPUMaterial(const Material& material);
-
-    alignas(16) glm::vec3 kd{ 1.0f };
-	alignas(16) glm::vec3 ks{ 0.0f };
-	float shininess{ 1.0f };
-	float transparency{ 1.0f };
-};
-
 class GPUMesh {
 public:
     GPUMesh(const Mesh& cpuMesh);

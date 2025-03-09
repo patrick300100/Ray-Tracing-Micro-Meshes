@@ -30,7 +30,6 @@ public:
         mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/cilinder.gltf");
 
         try {
-            m_defaultShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/shader_vert.glsl").addFS(RESOURCE_ROOT "shaders/shader_frag.glsl").build();
             skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/skinning.vert").addFS(RESOURCE_ROOT "shaders/skinning.frag").build();
         } catch (ShaderLoadingException& e) {
             std::cerr << e.what() << std::endl;
@@ -48,9 +47,6 @@ public:
             glEnable(GL_DEPTH_TEST);
 
             const glm::mat4 mvpMatrix = m_projectionMatrix * trackball->viewMatrix() * m_modelMatrix;
-            // Normals should be transformed differently than positions (ignoring translations + dealing with scaling):
-            // https://paroj.github.io/gltut/Illumination/Tut09%20Normal%20Transformation.html
-            const glm::mat3 normalModelMatrix = glm::inverseTranspose(glm::mat3(m_modelMatrix));
 
             for(GPUMesh& m : mesh) {
                 skinningShader.bind();
@@ -67,7 +63,6 @@ public:
 private:
     Window m_window;
 
-    Shader m_defaultShader;
     Shader skinningShader;
 
     std::vector<GPUMesh> mesh;
