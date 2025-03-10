@@ -1,25 +1,17 @@
 #include "mesh.h"
 #include <framework/disable_all_warnings.h>
+#include <framework/TinyGLTFLoader.h>
 DISABLE_WARNINGS_PUSH()
 #include <fmt/format.h>
 DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
 
-GPUMaterial::GPUMaterial(const Material& material) :
-    kd(material.kd),
-    ks(material.ks),
-    shininess(material.shininess),
-    transparency(material.transparency)
-{}
-
-GPUMesh::GPUMesh(const Mesh& cpuMesh)
-{
-    // Create uniform buffer to store mesh material (https://learnopengl.com/Advanced-OpenGL/Advanced-GLSL)
-    GPUMaterial gpuMaterial(cpuMesh.material);
-    glGenBuffers(1, &m_uboMaterial);
-    glBindBuffer(GL_UNIFORM_BUFFER, m_uboMaterial);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(GPUMaterial), &gpuMaterial, GL_STATIC_READ);
+GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh) {
+    //Create uniform buffer to store bone transformations
+    glGenBuffers(1, &m_uboBoneMatrices);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_uboBoneMatrices);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
     // Figure out if this mesh has texture coordinates
     m_hasTextureCoords = static_cast<bool>(cpuMesh.material.kdTexture);
@@ -38,18 +30,24 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.triangles.size() * sizeof(decltype(cpuMesh.triangles)::value_type)), cpuMesh.triangles.data(), GL_STATIC_DRAW);
 
-    // Tell OpenGL that we will be using vertex attributes 0, 1 and 2.
+    // Tell OpenGL that we will be using vertex attributes 0, 1, 2, 3, and 4.
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
+    glEnableVertexAttribArray(4);
     // We tell OpenGL what each vertex looks like and how they are mapped to the shader (location = ...).
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texCoord));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneIndices));
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneWeights));
     // Reuse all attributes for each instance
     glVertexAttribDivisor(0, 0);
     glVertexAttribDivisor(1, 0);
     glVertexAttribDivisor(2, 0);
+    glVertexAttribDivisor(3, 0);
+    glVertexAttribDivisor(4, 0);
 
     // Each triangle has 3 vertices.
     m_numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
@@ -83,16 +81,25 @@ std::vector<GPUMesh> GPUMesh::loadMeshGPU(std::filesystem::path filePath, bool n
     return gpuMeshes;
 }
 
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& filePath) {
+    if(!std::filesystem::exists(filePath)) throw MeshLoadingException(fmt::format("File {} does not exist", filePath.string().c_str()));
+
+    // Generate GPU-side meshes for all sub-meshes
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(filePath).toMesh();
+    std::vector<GPUMesh> gpuMeshes;
+    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
+
+    return gpuMeshes;
+}
+
 bool GPUMesh::hasTextureCoords() const
 {
     return m_hasTextureCoords;
 }
 
-void GPUMesh::draw(const Shader& drawingShader)
-{
-    // Bind material data uniform (we assume that the uniform buffer objects is always called 'Material')
-    // Yes, we could define the binding inside the shader itself, but that would break on OpenGL versions below 4.2
-    drawingShader.bindUniformBlock("Material", 0, m_uboMaterial);
+void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, boneMatrices.size() * sizeof(glm::mat4), boneMatrices.data());
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_uboBoneMatrices);
     
     // Draw the mesh's triangles
     glBindVertexArray(m_vao);
@@ -107,14 +114,14 @@ void GPUMesh::moveInto(GPUMesh&& other)
     m_ibo = other.m_ibo;
     m_vbo = other.m_vbo;
     m_vao = other.m_vao;
-    m_uboMaterial = other.m_uboMaterial;
+    m_uboBoneMatrices = other.m_uboBoneMatrices;
 
     other.m_numIndices = 0;
     other.m_hasTextureCoords = other.m_hasTextureCoords;
     other.m_ibo = INVALID;
     other.m_vbo = INVALID;
     other.m_vao = INVALID;
-    other.m_uboMaterial = INVALID;
+    other.m_uboBoneMatrices = INVALID;
 }
 
 void GPUMesh::freeGpuMemory()
@@ -125,6 +132,6 @@ void GPUMesh::freeGpuMemory()
         glDeleteBuffers(1, &m_vbo);
     if (m_ibo != INVALID)
         glDeleteBuffers(1, &m_ibo);
-    if (m_uboMaterial != INVALID)
-        glDeleteBuffers(1, &m_uboMaterial);
+    if (m_uboBoneMatrices != INVALID)
+        glDeleteBuffers(1, &m_uboBoneMatrices);
 }

@@ -53,17 +53,6 @@ void Shader::bind() const
     glUseProgram(m_program);
 }
 
-void Shader::bindUniformBlock(const std::string& blockName, GLuint bindingLocation, GLuint uniformBlockBuffer) const
-{
-    GLuint blockIdx = glGetUniformBlockIndex(m_program, blockName.data());
-    if (blockIdx != GL_INVALID_INDEX) {
-        glUniformBlockBinding(m_program, blockIdx, bindingLocation);
-        glBindBufferBase(GL_UNIFORM_BUFFER, bindingLocation, uniformBlockBuffer);
-    } else {
-        std::cout << "Could not bind uniform block " << blockName << " invalid name" << std::endl;
-    }
-}
-
 GLuint Shader::getAttributeLocation(const std::string& name) const
 {
     GLuint loc = glGetAttribLocation(m_program, name.c_str());

@@ -28,9 +28,6 @@ public:
     // ... Feel free to add more methods here (e.g. for setting uniforms or keeping track of texture units) ...
     void bind() const;
 
-    // Bind the uniform define by the given name to the given buffer and location in its assigned block, 
-    void bindUniformBlock(const std::string& blockName, GLuint bindingLocation, GLuint uniformBlockBuffer) const;
-
     // Query an attribute location by its name in the shader
     GLuint getAttributeLocation(const std::string& name) const;
     

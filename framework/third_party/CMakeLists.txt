@@ -15,6 +15,8 @@ if (NOT FRAMEWORK_BASIC_LIBRARY)
 	add_subdirectory("stb")
 	add_subdirectory("nativefiledialog")
 	add_subdirectory("toml")
+	add_subdirectory("tinygltf")
+	add_subdirectory("json")
 endif()
 
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_COPY})

@@ -15,16 +15,6 @@ struct MeshLoadingException : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-// Alignment directives are to comply with std140 alignment requirements (https://www.khronos.org/opengl/wiki/Interface_Block_(GLSL)#Memory_layout)
-struct GPUMaterial {
-    GPUMaterial(const Material& material);
-
-    alignas(16) glm::vec3 kd{ 1.0f };
-	alignas(16) glm::vec3 ks{ 0.0f };
-	float shininess{ 1.0f };
-	float transparency{ 1.0f };
-};
-
 class GPUMesh {
 public:
     GPUMesh(const Mesh& cpuMesh);
@@ -36,6 +26,7 @@ public:
     // Generate a number of GPU meshes from a particular model file.
     // Multiple meshes may be generated if there are multiple sub-meshes in the file
     static std::vector<GPUMesh> loadMeshGPU(std::filesystem::path filePath, bool normalize = false);
+    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& filePath);
 
     // Cannot copy a GPU mesh because it would require reference counting of GPU resources.
     GPUMesh& operator=(const GPUMesh&) = delete;
@@ -44,7 +35,9 @@ public:
     bool hasTextureCoords() const;
 
     // Bind VAO and call glDrawElements.
-    void draw(const Shader& drawingShader);
+    void draw(const std::vector<glm::mat4>& boneMatrices) const;
+
+    Mesh cpuMesh;
 
 private:
     void moveInto(GPUMesh&&);
@@ -58,5 +51,5 @@ private:
     GLuint m_ibo { INVALID };
     GLuint m_vbo { INVALID };
     GLuint m_vao { INVALID };
-    GLuint m_uboMaterial { INVALID };
+    GLuint m_uboBoneMatrices { INVALID };
 };
