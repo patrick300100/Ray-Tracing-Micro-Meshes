@@ -18,7 +18,7 @@ add_executable(Micro_Meshes
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
-target_link_libraries(Micro_Meshes PRIVATE CGFramework)
+target_link_libraries(Micro_Meshes PRIVATE CGFramework PRIVATE umeshtools_core)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 
@@ -51,4 +51,3 @@ foreach (shader_file IN LISTS Micro_Meshes_shader_sources)
 endforeach()
 add_custom_target(Micro_Meshes_copy_shaders DEPENDS ${Micro_Meshes_shader_copies})
 add_dependencies(Micro_Meshes Micro_Meshes_copy_shaders)
-
