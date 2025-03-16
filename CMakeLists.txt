@@ -11,7 +11,7 @@ add_executable(Micro_Meshes
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
-target_link_libraries(Micro_Meshes PRIVATE CGFramework PRIVATE umeshtools_core)
+target_link_libraries(Micro_Meshes PRIVATE CGFramework)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "mesh.h"
 #include <tinygltf/tiny_gltf.h>
+#include "mesh_io_gltf.h"
 
 class TinyGLTFLoader {
     tinygltf::Model model;
@@ -33,5 +34,5 @@ class TinyGLTFLoader {
 public:
     explicit TinyGLTFLoader(const std::filesystem::path& file);
 
-    std::vector<Mesh> toMesh();
+    std::vector<Mesh> toMesh(GLTFReadInfo& umeshReadInfo);
 };

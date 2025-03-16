@@ -5,6 +5,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <tinygltf/tiny_gltf.h>
 
+#include "micro.h"
 #include "TransformationChannel.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
@@ -64,6 +65,8 @@ struct Mesh {
 	std::vector<Bone> bones;
 
 	std::vector<int> parent;
+
+	SubdivisionMesh umesh;
 
 	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float currentTime) {
 		std::vector<glm::mat4> transformations = {};

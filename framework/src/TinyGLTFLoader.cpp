@@ -26,7 +26,7 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& file) {
     }
 }
 
-std::vector<Mesh> TinyGLTFLoader::toMesh() {
+std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
     std::vector<Mesh> out;
 
     for(int i = 0; i < model.meshes.size(); i++) {
@@ -116,6 +116,8 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
         boneTransformations(myMesh);
 
         myMesh.parent = std::move(parent);
+
+        myMesh.umesh = umeshReadInfo.get_subdivision_mesh();
 
         out.push_back(myMesh);
     }
