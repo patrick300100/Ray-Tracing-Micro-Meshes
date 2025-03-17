@@ -109,7 +109,12 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
             }
 
             myMesh.vertices = std::move(vertices);
-            myMesh.triangles = std::move(triangles);
+
+            myMesh.baseTriangleIndices = triangles;
+
+            for(const auto& triangle : triangles) {
+                myMesh.triangles.emplace_back(triangle);
+            }
         }
 
         auto node = *std::ranges::find(model.nodes, i, &tinygltf::Node::mesh); //Find node corresponding to this mesh

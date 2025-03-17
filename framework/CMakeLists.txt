@@ -20,7 +20,6 @@ else()
 
 	add_library(CGFramework STATIC
 		"src/trackball.cpp"
-		"src/mesh.cpp"
 		"src/image.cpp"
 		"src/shader.cpp"
 		"src/window.cpp"

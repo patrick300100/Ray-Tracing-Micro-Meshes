@@ -16,6 +16,17 @@ DISABLE_WARNINGS_POP()
 #include <span>
 #include <vector>
 
+struct uVertex {
+	glm::vec3 position;
+	glm::vec3 displacement;
+};
+
+struct Triangle {
+	glm::uvec3 baseVertexIndices; //Indices of the vertices array of the Mesh struct
+	std::vector<uVertex> uVertices; //Since base vertices can also be part of a micro triangle, this vector also contains base vertices
+	std::vector<glm::uvec3> uFaces; //Indices to the uVertices vector that determine which micro vertices make up for a micro triangle.
+};
+
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
@@ -60,7 +71,7 @@ struct Bone {
 
 struct Mesh {
 	std::vector<Vertex> vertices;
-	std::vector<glm::uvec3> triangles; //Contains a triplet of values corresponding to the indices of the 3 vertices in the vertices array.
+	std::vector<Triangle> triangles;
 
 	Material material;
 
@@ -87,10 +98,6 @@ struct Mesh {
 
 		return globalTransform(currentTime, parent[index]) * bones[index].transformationMatrix(currentTime);
 	}
-};
 
-[[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
-[[nodiscard]] Mesh mergeMeshes(std::span<const Mesh> meshes);
-void meshFlipX(Mesh& mesh);
-void meshFlipY(Mesh& mesh);
-void meshFlipZ(Mesh& mesh);
+	std::vector<glm::uvec3> baseTriangleIndices;
+};

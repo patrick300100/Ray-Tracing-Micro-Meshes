@@ -31,7 +31,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh): cpuMesh(cpu
     // Create index buffer object (IBO)
     glGenBuffers(1, &m_ibo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.triangles.size() * sizeof(decltype(cpuMesh.triangles)::value_type)), cpuMesh.triangles.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.baseTriangleIndices.size() * sizeof(decltype(cpuMesh.baseTriangleIndices)::value_type)), cpuMesh.baseTriangleIndices.data(), GL_STATIC_DRAW);
 
     // Tell OpenGL that we will be using vertex attributes 0, 1, 2, 3, and 4.
     glEnableVertexAttribArray(0);
@@ -159,17 +159,17 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other)
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadMeshGPU(std::filesystem::path filePath, bool normalize) {
-    if (!std::filesystem::exists(filePath))
-        throw MeshLoadingException(fmt::format("File {} does not exist", filePath.string().c_str()));
-
-    // Generate GPU-side meshes for all sub-meshes
-    std::vector<Mesh> subMeshes = loadMesh(filePath, normalize);
-    std::vector<GPUMesh> gpuMeshes;
-    //for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
-    
-    return gpuMeshes;
-}
+// std::vector<GPUMesh> GPUMesh::loadMeshGPU(std::filesystem::path filePath, bool normalize) {
+//     if (!std::filesystem::exists(filePath))
+//         throw MeshLoadingException(fmt::format("File {} does not exist", filePath.string().c_str()));
+//
+//     // Generate GPU-side meshes for all sub-meshes
+//     std::vector<Mesh> subMeshes = loadMesh(filePath, normalize);
+//     std::vector<GPUMesh> gpuMeshes;
+//     //for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
+//
+//     return gpuMeshes;
+// }
 
 std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
