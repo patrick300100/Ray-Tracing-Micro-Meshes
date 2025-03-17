@@ -184,7 +184,7 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
     }
 
     // Generate GPU-side meshes for all sub-meshes
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath).toMesh(read_micromesh);
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh(read_micromesh);
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, mesh.umesh); }
 

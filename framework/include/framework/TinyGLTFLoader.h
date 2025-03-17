@@ -6,6 +6,7 @@
 class TinyGLTFLoader {
     tinygltf::Model model;
     std::vector<int> parent; //Parent of each bone. The value is the index of the bone parent
+    SubdivisionMesh umesh;
 
     template <typename T>
     std::vector<T> getAttributeData(const tinygltf::Primitive& primitive, const std::string& attributeName) {
@@ -31,8 +32,13 @@ class TinyGLTFLoader {
 
     void boneTransformations(Mesh& mesh) const;
 
+    /**
+    * Fetch the vertex displacement given its position.
+    */
+    [[nodiscard]] glm::vec3 getVertexDisplacement(glm::vec3 position) const;
+
 public:
-    explicit TinyGLTFLoader(const std::filesystem::path& file);
+    TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo);
 
     std::vector<Mesh> toMesh(GLTFReadInfo& umeshReadInfo);
 };

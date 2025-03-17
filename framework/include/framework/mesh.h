@@ -24,6 +24,8 @@ struct Vertex {
 	glm::ivec4 boneIndices = glm::ivec4(0);
 	glm::vec4 boneWeights = glm::vec4(0.0f);
 
+	glm::vec3 displacement;
+
 	[[nodiscard]] constexpr bool operator==(const Vertex&) const noexcept = default;
 };
 
