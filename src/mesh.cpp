@@ -65,11 +65,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh): cpuMesh(cpu
 
 
 	baseVerticesLine.reserve(sizeof(WireframeVertex) * cpuMesh.triangles.size() * 6);
-
-
-    std::vector<float> wire_buffer_inner;
-
-    wire_buffer_inner.reserve(umesh.micro_fn);
+	microVerticesLine.reserve(sizeof(WireframeVertex) * cpuMesh.triangles.size() * 6); //TODO not accurate. Look at it again
 
 	for(const auto& t : cpuMesh.triangles) {
 		const auto& v0 = cpuMesh.vertices[t.baseVertexIndices[0]];
@@ -105,6 +101,46 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh): cpuMesh(cpu
 
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	//Setup buffers for drawing micro vertices
+    {
+		for(const auto& t : cpuMesh.triangles) {
+			for(const auto& uf : t.uFaces) {
+				const auto& v0 = t.uVertices[uf[0]];
+				const auto& v1 = t.uVertices[uf[1]];
+				const auto& v2 = t.uVertices[uf[2]];
+
+				microVerticesLine.emplace_back(glm::vec3{v0.position.x, v0.position.y, v0.position.z}, glm::vec3{v0.displacement.x, v0.displacement.y, v0.displacement.z});
+				microVerticesLine.emplace_back(glm::vec3{v1.position.x, v1.position.y, v1.position.z}, glm::vec3{v1.displacement.x, v1.displacement.y, v1.displacement.z});
+				microVerticesLine.emplace_back(glm::vec3{v1.position.x, v1.position.y, v1.position.z}, glm::vec3{v1.displacement.x, v1.displacement.y, v1.displacement.z});
+				microVerticesLine.emplace_back(glm::vec3{v2.position.x, v2.position.y, v2.position.z}, glm::vec3{v2.displacement.x, v2.displacement.y, v2.displacement.z});
+				microVerticesLine.emplace_back(glm::vec3{v0.position.x, v0.position.y, v0.position.z}, glm::vec3{v0.displacement.x, v0.displacement.y, v0.displacement.z});
+				microVerticesLine.emplace_back(glm::vec3{v2.position.x, v2.position.y, v2.position.z}, glm::vec3{v2.displacement.x, v2.displacement.y, v2.displacement.z});
+			}
+		}
+
+    	glGenBuffers(1, &buffer_wire_inner_border);
+    	glBindBuffer(GL_ARRAY_BUFFER, buffer_wire_inner_border);
+    	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(microVerticesLine.size() * sizeof(WireframeVertex)), microVerticesLine.data(), GL_STREAM_DRAW);
+
+    	glGenVertexArrays(1, &vao_wire_inner_border);
+    	glBindVertexArray(vao_wire_inner_border);
+
+    	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, position));
+    	glEnableVertexAttribArray(0);
+
+    	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, displacement));
+    	glEnableVertexAttribArray(1);
+
+    	glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, boneIndices));
+    	glEnableVertexAttribArray(2);
+
+    	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, boneWeights));
+    	glEnableVertexAttribArray(3);
+
+    	glBindVertexArray(0);
+    	glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
 }
 
 GPUMesh::GPUMesh(GPUMesh&& other)
@@ -221,7 +257,7 @@ void GPUMesh::drawBaseEdges(const std::vector<glm::mat4>& bTs) {
 	glEnable(GL_BLEND);
 	glEnable(GL_LINE_SMOOTH);
 
-	glLineWidth(1.0f);
+	glLineWidth(3.0f);
 	glBindVertexArray(vao_wire_border);
 	glDrawArrays(GL_LINES, 0, baseVerticesLine.size());
 
@@ -229,4 +265,19 @@ void GPUMesh::drawBaseEdges(const std::vector<glm::mat4>& bTs) {
 	glDisable(GL_BLEND);
 	glDepthFunc(GL_LESS);
 }
+
+void GPUMesh::drawMicroEdges() {
+	glDepthFunc(GL_LEQUAL);
+	glEnable(GL_BLEND);
+	glEnable(GL_LINE_SMOOTH);
+
+	glLineWidth(0.2f);
+	glBindVertexArray(vao_wire_inner_border);
+	glDrawArrays(GL_LINES, 0, microVerticesLine.size());
+
+	glDisable(GL_LINE_SMOOTH);
+	glDisable(GL_BLEND);
+	glDepthFunc(GL_LESS);
+}
+
 

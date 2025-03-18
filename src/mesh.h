@@ -47,6 +47,7 @@ public:
     Mesh cpuMesh;
 
     void drawBaseEdges(const std::vector<glm::mat4>& bTs); //Draw edges of base mesh
+    void drawMicroEdges(); //Draw edges of micro mesh
 
 private:
     void moveInto(GPUMesh&&);
@@ -66,6 +67,6 @@ private:
     std::vector<WireframeVertex> baseVerticesLine;
     GLuint buffer_wire_border { INVALID }, vao_wire_border { INVALID };
 
-    GLsizei numInnerEdges { 0 }; //TODO Change this name
+    std::vector<WireframeVertex> microVerticesLine;
     GLuint buffer_wire_inner_border { INVALID }, vao_wire_inner_border { INVALID };
 };
