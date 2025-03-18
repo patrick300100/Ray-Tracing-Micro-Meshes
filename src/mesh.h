@@ -47,7 +47,7 @@ public:
     Mesh cpuMesh;
 
     void drawBaseEdges(const std::vector<glm::mat4>& bTs); //Draw edges of base mesh
-    void drawMicroEdges(); //Draw edges of micro mesh
+    void drawMicroEdges(const std::vector<glm::mat4>& bTs); //Draw edges of micro mesh
 
 private:
     void moveInto(GPUMesh&&);

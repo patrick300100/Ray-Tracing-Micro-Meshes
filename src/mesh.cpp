@@ -241,9 +241,9 @@ void GPUMesh::drawBaseEdges(const std::vector<glm::mat4>& bTs) {
 
 	for(const auto& v : baseVerticesLine) {
 		glm::mat4 skinMatrix = v.boneWeights.x * bTs[v.boneIndices.x] +
-		v.boneWeights.y * bTs[v.boneIndices.y] +
-		v.boneWeights.z * bTs[v.boneIndices.z] +
-		v.boneWeights.w * bTs[v.boneIndices.w];
+			v.boneWeights.y * bTs[v.boneIndices.y] +
+			v.boneWeights.z * bTs[v.boneIndices.z] +
+			v.boneWeights.w * bTs[v.boneIndices.w];
 
 		const auto skinnedPos = skinMatrix * glm::vec4(v.position, 1.0f);
 		newVs.emplace_back(glm::vec3{skinnedPos.x, skinnedPos.y, skinnedPos.z}, v.displacement, v.boneIndices, v.boneWeights);
@@ -266,7 +266,63 @@ void GPUMesh::drawBaseEdges(const std::vector<glm::mat4>& bTs) {
 	glDepthFunc(GL_LESS);
 }
 
-void GPUMesh::drawMicroEdges() {
+void GPUMesh::drawMicroEdges(const std::vector<glm::mat4>& bTs) {
+	std::vector<WireframeVertex> newVs;
+	newVs.reserve(microVerticesLine.size());
+
+	for(const auto& t : cpuMesh.triangles) {
+		const auto bv0 = cpuMesh.vertices[t.baseVertexIndices[0]];
+		const auto bv1 = cpuMesh.vertices[t.baseVertexIndices[1]];
+		const auto bv2 = cpuMesh.vertices[t.baseVertexIndices[2]];
+
+		auto baryCoords = t.baryCoords(bv0.position, bv1.position, bv2.position);
+
+		auto bv0SkinMatrix = bv0.boneWeights.x * bTs[bv0.boneIndices.x] + bv0.boneWeights.y * bTs[bv0.boneIndices.y] + bv0.boneWeights.z * bTs[bv0.boneIndices.z] + bv0.boneWeights.w * bTs[bv0.boneIndices.w];
+		auto bv1SkinMatrix = bv1.boneWeights.x * bTs[bv1.boneIndices.x] + bv1.boneWeights.y * bTs[bv1.boneIndices.y] + bv1.boneWeights.z * bTs[bv1.boneIndices.z] + bv1.boneWeights.w * bTs[bv1.boneIndices.w];
+		auto bv2SkinMatrix = bv2.boneWeights.x * bTs[bv2.boneIndices.x] + bv2.boneWeights.y * bTs[bv2.boneIndices.y] + bv2.boneWeights.z * bTs[bv2.boneIndices.z] + bv2.boneWeights.w * bTs[bv2.boneIndices.w];
+
+		//For some reason we need to take the transpose
+		bv0SkinMatrix = glm::transpose(bv0SkinMatrix);
+		bv1SkinMatrix = glm::transpose(bv1SkinMatrix);
+		bv2SkinMatrix = glm::transpose(bv2SkinMatrix);
+
+		for(const auto& uf : t.uFaces) {
+			const auto& v0 = t.uVertices[uf[0]];
+			const auto& v0BC = baryCoords[uf[0]];
+			const auto& v1 = t.uVertices[uf[1]];
+			const auto& v1BC = baryCoords[uf[1]];
+			const auto& v2 = t.uVertices[uf[2]];
+			const auto& v2BC = baryCoords[uf[2]];
+
+			const auto interpolatedSkinMatrixV0 = v0BC.x * bv0SkinMatrix + v0BC.y * bv1SkinMatrix + v0BC.z * bv2SkinMatrix;
+			const auto interpolatedSkinMatrixV1 = v1BC.x * bv0SkinMatrix + v1BC.y * bv1SkinMatrix + v1BC.z * bv2SkinMatrix;
+			const auto interpolatedSkinMatrixV2 = v2BC.x * bv0SkinMatrix + v2BC.y * bv1SkinMatrix + v2BC.z * bv2SkinMatrix;
+
+			const auto v0Temp1 = glm::vec4(v0.position, 1.0f) * interpolatedSkinMatrixV0;
+			const auto v0Temp2 = glm::vec4(v0.displacement, 1.0f) * glm::vec4(v0BC.x * bv0.normal + v0BC.y * bv1.normal + v0BC.z * bv2.normal, 0.0f) * interpolatedSkinMatrixV0;
+
+			const auto v0NewPos = v0Temp1 + v0Temp2;
+			const auto v1NewPos = glm::vec4(v1.position, 1.0f) * interpolatedSkinMatrixV1 + glm::vec4(v1.displacement, 1.0f) * glm::vec4(v1BC.x * bv0.normal + v1BC.y * bv1.normal + v1BC.z * bv2.normal, 0.0f) * interpolatedSkinMatrixV1;
+			const auto v2NewPos = glm::vec4(v2.position, 1.0f) * interpolatedSkinMatrixV2 + glm::vec4(v2.displacement, 1.0f) * glm::vec4(v2BC.x * bv0.normal + v2BC.y * bv1.normal + v2BC.z * bv2.normal, 0.0f) * interpolatedSkinMatrixV2;
+
+			const auto v0NewPosXYZ = glm::vec3{v0NewPos.x / v0NewPos.w, v0NewPos.y / v0NewPos.w, v0NewPos.z / v0NewPos.w};
+			const auto v1NewPosXYZ = glm::vec3{v1NewPos.x / v1NewPos.w, v1NewPos.y / v1NewPos.w, v1NewPos.z / v1NewPos.w};
+			const auto v2NewPosXYZ = glm::vec3{v2NewPos.x / v2NewPos.w, v2NewPos.y / v2NewPos.w, v2NewPos.z / v2NewPos.w};
+
+			newVs.emplace_back(v0NewPosXYZ, v0.displacement);
+			newVs.emplace_back(v1NewPosXYZ, v1.displacement);
+			newVs.emplace_back(v1NewPosXYZ, v1.displacement);
+			newVs.emplace_back(v2NewPosXYZ, v2.displacement);
+			newVs.emplace_back(v0NewPosXYZ, v0.displacement);
+			newVs.emplace_back(v2NewPosXYZ, v2.displacement);
+		}
+	}
+
+	glBindBuffer(GL_ARRAY_BUFFER, buffer_wire_inner_border);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(WireframeVertex)), newVs.data());
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+
 	glDepthFunc(GL_LEQUAL);
 	glEnable(GL_BLEND);
 	glEnable(GL_LINE_SMOOTH);

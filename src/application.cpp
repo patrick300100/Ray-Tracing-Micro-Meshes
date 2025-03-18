@@ -64,7 +64,7 @@ public:
 
                 glUniform3fv(2, 1, glm::value_ptr(glm::vec3(0.435f, 0.435f, 0.435f)));
 
-                m.drawMicroEdges();
+                m.drawMicroEdges(bTs);
             }
 
             m_window.swapBuffers();
