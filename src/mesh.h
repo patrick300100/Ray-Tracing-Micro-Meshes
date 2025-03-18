@@ -15,6 +15,13 @@ struct MeshLoadingException : public std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
+struct WireframeVertex {
+    glm::vec3 position;
+    glm::vec3 displacement;
+    glm::ivec4 boneIndices;
+    glm::vec4 boneWeights;
+};
+
 class GPUMesh {
 public:
     GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh);
@@ -39,7 +46,7 @@ public:
 
     Mesh cpuMesh;
 
-    void drawBaseEdges() const; //Draw edges of base mesh
+    void drawBaseEdges(const std::vector<glm::mat4>& bTs); //Draw edges of base mesh
 
 private:
     void moveInto(GPUMesh&&);
@@ -55,6 +62,10 @@ private:
     GLuint m_vao { INVALID };
     GLuint m_uboBoneMatrices { INVALID };
 
-    GLsizei numEdges { 0 }; //TODO Change this name
+
+    std::vector<WireframeVertex> baseVerticesLine;
     GLuint buffer_wire_border { INVALID }, vao_wire_border { INVALID };
+
+    GLsizei numInnerEdges { 0 }; //TODO Change this name
+    GLuint buffer_wire_inner_border { INVALID }, vao_wire_inner_border { INVALID };
 };

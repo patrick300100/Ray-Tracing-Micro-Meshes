@@ -59,7 +59,7 @@ public:
                 glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
                 glUniform1f(1, 1.0f);
 
-            	m.drawBaseEdges();
+            	m.drawBaseEdges(bTs);
             }
 
             m_window.swapBuffers();

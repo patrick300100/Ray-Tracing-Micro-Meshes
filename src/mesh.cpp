@@ -64,86 +64,47 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh): cpuMesh(cpu
 
 
 
+	baseVerticesLine.reserve(sizeof(WireframeVertex) * cpuMesh.triangles.size() * 6);
 
 
-	std::vector<float> wire_buffer_border;
     std::vector<float> wire_buffer_inner;
 
-    wire_buffer_border.reserve(uint64_t(3) * umesh.micro_fn * 6);
     wire_buffer_inner.reserve(umesh.micro_fn);
 
-	for (const SubdivisionTri& st : umesh.faces) {
-		BarycentricGrid bary_grid(st.subdivision_level());
+	for(const auto& t : cpuMesh.triangles) {
+		const auto& v0 = cpuMesh.vertices[t.baseVertexIndices[0]];
+		const auto& v1 = cpuMesh.vertices[t.baseVertexIndices[1]];
+		const auto& v2 = cpuMesh.vertices[t.baseVertexIndices[2]];
 
-		MatrixX FN = compute_face_normals(st.V + st.VD, st.F);
-
-		int deg = st.F.cols();
-		Assert(deg == 3);
-		for (int fi = 0; fi < st.F.rows(); ++fi) {
-			for (int j = 0; j < deg; ++j) {
-				Edge e(st.F(fi, j), st.F(fi, (j + 1) % deg));
-				Vector3 e0 = st.V.row(e.first);
-				Vector3 e1 = st.V.row(e.second);
-				Vector3 d0 = st.VD.row(e.first);
-				Vector3 d1 = st.VD.row(e.second);
-
-				int e0i, e0j;
-				int e1i, e1j;
-				bary_grid.inverted_index(e.first, &e0i, &e0j);
-				bary_grid.inverted_index(e.second, &e1i, &e1j);
-
-				if ((e0j == 0 && e1j == 0) // both on first column
-					|| (e0i == bary_grid.samples_per_side() - 1 && e1i == bary_grid.samples_per_side() - 1) // both on last row
-					|| (e0i == e0j && e1i == e1j)) { // both on diagonal
-					wire_buffer_border.push_back(e0.x());
-					wire_buffer_border.push_back(e0.y());
-					wire_buffer_border.push_back(e0.z());
-					wire_buffer_border.push_back(d0.x());
-					wire_buffer_border.push_back(d0.y());
-					wire_buffer_border.push_back(d0.z());
-					wire_buffer_border.push_back(e1.x());
-					wire_buffer_border.push_back(e1.y());
-					wire_buffer_border.push_back(e1.z());
-					wire_buffer_border.push_back(d1.x());
-					wire_buffer_border.push_back(d1.y());
-					wire_buffer_border.push_back(d1.z());
-				}
-				else {
-					wire_buffer_inner.push_back(e0.x());
-					wire_buffer_inner.push_back(e0.y());
-					wire_buffer_inner.push_back(e0.z());
-					wire_buffer_inner.push_back(d0.x());
-					wire_buffer_inner.push_back(d0.y());
-					wire_buffer_inner.push_back(d0.z());
-					wire_buffer_inner.push_back(e1.x());
-					wire_buffer_inner.push_back(e1.y());
-					wire_buffer_inner.push_back(e1.z());
-					wire_buffer_inner.push_back(d1.x());
-					wire_buffer_inner.push_back(d1.y());
-					wire_buffer_inner.push_back(d1.z());
-				}
-			}
-		}
+		baseVerticesLine.emplace_back(glm::vec3{v0.position.x, v0.position.y, v0.position.z}, glm::vec3{v0.displacement.x, v0.displacement.y, v0.displacement.z}, v0.boneIndices, v0.boneWeights);
+		baseVerticesLine.emplace_back(glm::vec3{v1.position.x, v1.position.y, v1.position.z}, glm::vec3{v1.displacement.x, v1.displacement.y, v1.displacement.z}, v1.boneIndices, v1.boneWeights);
+		baseVerticesLine.emplace_back(glm::vec3{v1.position.x, v1.position.y, v1.position.z}, glm::vec3{v1.displacement.x, v1.displacement.y, v1.displacement.z}, v1.boneIndices, v1.boneWeights);
+		baseVerticesLine.emplace_back(glm::vec3{v2.position.x, v2.position.y, v2.position.z}, glm::vec3{v2.displacement.x, v2.displacement.y, v2.displacement.z}, v2.boneIndices, v2.boneWeights);
+		baseVerticesLine.emplace_back(glm::vec3{v0.position.x, v0.position.y, v0.position.z}, glm::vec3{v0.displacement.x, v0.displacement.y, v0.displacement.z}, v0.boneIndices, v0.boneWeights);
+		baseVerticesLine.emplace_back(glm::vec3{v2.position.x, v2.position.y, v2.position.z}, glm::vec3{v2.displacement.x, v2.displacement.y, v2.displacement.z}, v2.boneIndices, v2.boneWeights);
 	}
 
-	constexpr int wire_vertex_size = 6 * sizeof(float);
 	glGenBuffers(1, &buffer_wire_border);
 	glBindBuffer(GL_ARRAY_BUFFER, buffer_wire_border);
-	glBufferData(GL_ARRAY_BUFFER, wire_buffer_border.size() * sizeof(float), wire_buffer_border.data(), GL_STREAM_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(baseVerticesLine.size() * sizeof(WireframeVertex)), baseVerticesLine.data(), GL_STREAM_DRAW);
 
 	glGenVertexArrays(1, &vao_wire_border);
 	glBindVertexArray(vao_wire_border);
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, wire_vertex_size, nullptr);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, position));
 	glEnableVertexAttribArray(0);
 
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, wire_vertex_size, (void*)(3 * sizeof(float)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, displacement));
 	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, boneIndices));
+	glEnableVertexAttribArray(2);
+
+	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(WireframeVertex), (void*)offsetof(WireframeVertex, boneWeights));
+	glEnableVertexAttribArray(3);
 
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	numEdges = wire_buffer_border.size();
 }
 
 GPUMesh::GPUMesh(GPUMesh&& other)
@@ -238,14 +199,31 @@ void GPUMesh::freeGpuMemory()
         glDeleteBuffers(1, &m_uboBoneMatrices);
 }
 
-void GPUMesh::drawBaseEdges() const {
+void GPUMesh::drawBaseEdges(const std::vector<glm::mat4>& bTs) {
+	std::vector<WireframeVertex> newVs;
+	newVs.reserve(baseVerticesLine.size());
+
+	for(const auto& v : baseVerticesLine) {
+		glm::mat4 skinMatrix = v.boneWeights.x * bTs[v.boneIndices.x] +
+		v.boneWeights.y * bTs[v.boneIndices.y] +
+		v.boneWeights.z * bTs[v.boneIndices.z] +
+		v.boneWeights.w * bTs[v.boneIndices.w];
+
+		const auto skinnedPos = skinMatrix * glm::vec4(v.position, 1.0f);
+		newVs.emplace_back(glm::vec3{skinnedPos.x, skinnedPos.y, skinnedPos.z}, v.displacement, v.boneIndices, v.boneWeights);
+	}
+
+	glBindBuffer(GL_ARRAY_BUFFER, buffer_wire_border);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(WireframeVertex)), newVs.data());
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
 	glDepthFunc(GL_LEQUAL);
 	glEnable(GL_BLEND);
 	glEnable(GL_LINE_SMOOTH);
 
 	glLineWidth(1.0f);
 	glBindVertexArray(vao_wire_border);
-	glDrawArrays(GL_LINES, 0, numEdges / 6);
+	glDrawArrays(GL_LINES, 0, baseVerticesLine.size());
 
 	glDisable(GL_LINE_SMOOTH);
 	glDisable(GL_BLEND);
