@@ -112,8 +112,23 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
 
             myMesh.baseTriangleIndices = triangles;
 
-            for(const auto& triangle : triangles) {
-                myMesh.triangles.emplace_back(triangle);
+            for(const auto& [f, t] : std::views::zip(umesh.faces, triangles)) {
+                std::vector<uVertex> uvs; //micro vertices
+                for(int j = 0; j < f.V.rows(); j++) {
+                    const auto& pos = f.V.row(j);
+                    const auto& dis = f.VD.row(j);
+
+                    uvs.emplace_back(glm::vec3{pos(0), pos(1), pos(2)}, glm::vec3{dis(0), dis(1), dis(2)});
+                }
+
+                std::vector<glm::uvec3> ufs; //micro faces
+                for(int j = 0; j < f.F.rows(); j++) {
+                    const auto& indices = f.F.row(j);
+
+                    ufs.emplace_back(indices(0), indices(1), indices(2));
+                }
+
+                myMesh.triangles.emplace_back(t, uvs, ufs);
             }
         }
 
