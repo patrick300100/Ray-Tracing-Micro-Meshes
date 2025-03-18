@@ -11,6 +11,7 @@ layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 texCoord;
 layout(location = 3) in ivec4 boneIndices;
 layout(location = 4) in vec4 boneWeights;
+layout(location = 5) in vec4 displacement;
 
 out vec3 fragNormal;
 
