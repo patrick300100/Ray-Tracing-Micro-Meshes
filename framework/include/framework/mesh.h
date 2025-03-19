@@ -31,23 +31,27 @@ struct Triangle {
 		baryCoords.reserve(uVertices.size());
 
 		for(const auto& uv : uVertices) {
-			glm::vec3 v0 = B - A, v1 = C - A, v2 = uv.position - A;
-
-			const float d00 = glm::dot(v0, v0);
-			const float d01 = glm::dot(v0, v1);
-			const float d11 = glm::dot(v1, v1);
-			const float d20 = glm::dot(v2, v0);
-			const float d21 = glm::dot(v2, v1);
-
-			const float denom = d00 * d11 - d01 * d01;
-			const float beta = (d11 * d20 - d01 * d21) / denom;
-			const float gamma = (d00 * d21 - d01 * d20) / denom;
-			const float alpha = 1.0f - beta - gamma;
-
-			baryCoords.emplace_back(alpha, beta, gamma);
+			baryCoords.push_back(computeBaryCoords(A, B, C, uv.position));
 		}
 
 		return baryCoords;
+	}
+
+	[[nodiscard]] glm::vec3 computeBaryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C, const glm::vec3& pos) const {
+		glm::vec3 v0 = B - A, v1 = C - A, v2 = pos - A;
+
+		const float d00 = glm::dot(v0, v0);
+		const float d01 = glm::dot(v0, v1);
+		const float d11 = glm::dot(v1, v1);
+		const float d20 = glm::dot(v2, v0);
+		const float d21 = glm::dot(v2, v1);
+
+		const float denom = d00 * d11 - d01 * d01;
+		const float beta = (d11 * d20 - d01 * d21) / denom;
+		const float gamma = (d00 * d21 - d01 * d20) / denom;
+		const float alpha = 1.0f - beta - gamma;
+
+		return {alpha, beta, gamma};
 	}
 };
 
