@@ -51,20 +51,11 @@ public:
                 skinningShader.bind();
                 glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
 
-                auto bTs = m.cpuMesh.boneTransformations(glfwGetTime());
+                auto bTs = m.cpuMesh.boneTransformations(glfwGetTime()); //bone transformations
                 m.draw(bTs);
 
                 edgesShader.bind();
-
-                glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
-                glUniform1f(1, 1.0f);
-                glUniform3fv(2, 1, glm::value_ptr(glm::vec3(0.235f, 0.235f, 0.235f)));
-
-            	m.drawBaseEdges(bTs);
-
-                glUniform3fv(2, 1, glm::value_ptr(glm::vec3(0.435f, 0.435f, 0.435f)));
-
-                m.drawMicroEdges(bTs);
+                m.drawWireframe(bTs, mvpMatrix);
             }
 
             m_window.swapBuffers();
