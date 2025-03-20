@@ -155,7 +155,10 @@ void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4> &bTs) const {
         glm::mat4 skinMatrix = v.boneWeights.x * bTs[v.boneIndices.x] + v.boneWeights.y * bTs[v.boneIndices.y] + v.boneWeights.z * bTs[v.boneIndices.z] + v.boneWeights.w * bTs[v.boneIndices.w];
 
         const auto skinnedPos = skinMatrix * glm::vec4(v.position, 1.0f);
-        newVs.emplace_back(glm::vec3{skinnedPos.x, skinnedPos.y, skinnedPos.z}, v.displacement, v.boneIndices, v.boneWeights);
+		const auto skinnedPosXYZ = glm::vec3{skinnedPos.x, skinnedPos.y, skinnedPos.z};
+
+    	//Add small offset to avoid z-fighting
+        newVs.emplace_back(skinnedPosXYZ + 0.001f * v.displacement, v.displacement, v.boneIndices, v.boneWeights);
     }
 
 	glNamedBufferSubData(baseVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(WireframeVertex)), newVs.data());
@@ -199,7 +202,8 @@ void WireframeDraw::drawMicroEdges(const std::vector<glm::mat4> &bTs) const {
 		const auto uvNewPos = glm::vec4(uv.position, 1.0f) * interpolatedSkinMatrix + glm::vec4(uv.displacement, 1.0f) * glm::vec4(baryCoords.x * bv0.normal + baryCoords.y * bv1.normal + baryCoords.z * bv2.normal, 0.0f) * interpolatedSkinMatrix;
 		const auto uvNewPosXYZ = glm::vec3{uvNewPos.x / uvNewPos.w, uvNewPos.y / uvNewPos.w, uvNewPos.z / uvNewPos.w};
 
-		newVs.emplace_back(uvNewPosXYZ, uv.displacement, uv.baseTriangleIndex);
+		//Add small offset to avoid z-fighting
+		newVs.emplace_back(uvNewPosXYZ + 0.001f * uv.displacement, uv.displacement, uv.baseTriangleIndex);
 	}
 
 	glNamedBufferSubData(microVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(WireframeVertex)), newVs.data());
