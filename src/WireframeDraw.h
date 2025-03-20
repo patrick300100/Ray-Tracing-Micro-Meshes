@@ -52,6 +52,7 @@ class WireframeDraw {
   GLuint microVBO, microVAO;
 
   static size_t hash(const glm::vec3& posA, const glm::vec3& posB);
+  static void hash_combine(size_t& seed, const float& v);
   bool contains(const glm::vec3& posA, const glm::vec3& posB) const;
 
 public:

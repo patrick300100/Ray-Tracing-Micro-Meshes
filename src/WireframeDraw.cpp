@@ -50,9 +50,15 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
                 const auto& v1 = t.uVertices[uf[1]];
                 const auto& v2 = t.uVertices[uf[2]];
 
-                if(!(contains(v0.position, v1.position) || contains(v1.position, v0.position))) addMicroEdge(v0, v1, index);
-                if(!(contains(v1.position, v2.position) || contains(v2.position, v1.position))) addMicroEdge(v1, v2, index);
-                if(!(contains(v0.position, v2.position) || contains(v2.position, v0.position))) addMicroEdge(v0, v2, index);
+            	//A triangle has 3 edges. Loop over each edge
+            	for(const auto& [vA, vB] : std::vector<std::pair<uVertex, uVertex>>{{v0, v1}, {v1, v2}, {v0, v2}}) {
+            		const auto bary = t.computeBaryCoords(mesh.vertices[t.baseVertexIndices[0]].position, mesh.vertices[t.baseVertexIndices[1]].position, mesh.vertices[t.baseVertexIndices[2]].position, (vA.position + vB.position) / 2.0f);
+
+		            const bool onBaseEdge = glm::any(glm::epsilonEqual(bary, glm::vec3(0.0f), 0.0001f)); //Edge (of micro triangle) lies on edge of base triangle
+            		const bool drawnBefore = contains(vA.position, vB.position) || contains(vB.position, vA.position); //This edge has already been drawn before
+
+            		if(!onBaseEdge && !drawnBefore) addMicroEdge(vA, vB, index);
+            	}
             }
         }
 
@@ -81,8 +87,7 @@ WireframeDraw::~WireframeDraw() {
 	glDeleteBuffers(1, &microVBO);
 }
 
-static void hash_combine(size_t& seed, const float& v)
-{
+void WireframeDraw::hash_combine(size_t& seed, const float& v) {
     std::hash<float> hasher;
     seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }

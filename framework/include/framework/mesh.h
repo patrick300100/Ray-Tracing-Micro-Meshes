@@ -37,8 +37,8 @@ struct Triangle {
 		return baryCoords;
 	}
 
-	[[nodiscard]] glm::vec3 computeBaryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C, const glm::vec3& pos) const {
-		glm::vec3 v0 = B - A, v1 = C - A, v2 = pos - A;
+	[[nodiscard]] static glm::vec3 computeBaryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C, const glm::vec3& pos) {
+		const glm::vec3 v0 = B - A, v1 = C - A, v2 = pos - A;
 
 		const float d00 = glm::dot(v0, v0);
 		const float d01 = glm::dot(v0, v1);
