@@ -5,6 +5,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <tinygltf/tiny_gltf.h>
 
+#include "micro.h"
 #include "TransformationChannel.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
@@ -15,6 +16,45 @@ DISABLE_WARNINGS_POP()
 #include <span>
 #include <vector>
 
+struct uVertex {
+	glm::vec3 position;
+	glm::vec3 displacement;
+};
+
+struct Triangle {
+	glm::uvec3 baseVertexIndices; //Indices of the vertices array of the Mesh struct
+	std::vector<uVertex> uVertices; //Since base vertices can also be part of a micro triangle, this vector also contains base vertices
+	std::vector<glm::uvec3> uFaces; //Indices to the uVertices vector that determine which micro vertices make up for a micro triangle.
+
+	[[nodiscard]] std::vector<glm::vec3> baryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C) const {
+		std::vector<glm::vec3> baryCoords;
+		baryCoords.reserve(uVertices.size());
+
+		for(const auto& uv : uVertices) {
+			baryCoords.push_back(computeBaryCoords(A, B, C, uv.position));
+		}
+
+		return baryCoords;
+	}
+
+	[[nodiscard]] static glm::vec3 computeBaryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C, const glm::vec3& pos) {
+		const glm::vec3 v0 = B - A, v1 = C - A, v2 = pos - A;
+
+		const float d00 = glm::dot(v0, v0);
+		const float d01 = glm::dot(v0, v1);
+		const float d11 = glm::dot(v1, v1);
+		const float d20 = glm::dot(v2, v0);
+		const float d21 = glm::dot(v2, v1);
+
+		const float denom = d00 * d11 - d01 * d01;
+		const float beta = (d11 * d20 - d01 * d21) / denom;
+		const float gamma = (d00 * d21 - d01 * d20) / denom;
+		const float alpha = 1.0f - beta - gamma;
+
+		return {alpha, beta, gamma};
+	}
+};
+
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
@@ -22,6 +62,8 @@ struct Vertex {
 
 	glm::ivec4 boneIndices = glm::ivec4(0);
 	glm::vec4 boneWeights = glm::vec4(0.0f);
+
+	glm::vec3 displacement;
 
 	[[nodiscard]] constexpr bool operator==(const Vertex&) const noexcept = default;
 };
@@ -57,13 +99,15 @@ struct Bone {
 
 struct Mesh {
 	std::vector<Vertex> vertices;
-	std::vector<glm::uvec3> triangles; //Contains a triplet of values corresponding to the indices of the 3 vertices in the vertices array.
+	std::vector<Triangle> triangles;
 
 	Material material;
 
 	std::vector<Bone> bones;
 
 	std::vector<int> parent;
+
+	SubdivisionMesh umesh;
 
 	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float currentTime) {
 		std::vector<glm::mat4> transformations = {};
@@ -82,10 +126,6 @@ struct Mesh {
 
 		return globalTransform(currentTime, parent[index]) * bones[index].transformationMatrix(currentTime);
 	}
-};
 
-[[nodiscard]] std::vector<Mesh> loadMesh(const std::filesystem::path& file, bool normalize = false);
-[[nodiscard]] Mesh mergeMeshes(std::span<const Mesh> meshes);
-void meshFlipX(Mesh& mesh);
-void meshFlipY(Mesh& mesh);
-void meshFlipZ(Mesh& mesh);
+	std::vector<glm::uvec3> baseTriangleIndices;
+};

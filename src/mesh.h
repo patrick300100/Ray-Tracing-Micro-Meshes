@@ -3,6 +3,8 @@
 #include <framework/disable_all_warnings.h>
 #include <framework/mesh.h>
 #include <framework/shader.h>
+
+#include "WireframeDraw.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec3.hpp>
 DISABLE_WARNINGS_POP()
@@ -17,7 +19,7 @@ struct MeshLoadingException : public std::runtime_error {
 
 class GPUMesh {
 public:
-    GPUMesh(const Mesh& cpuMesh);
+    GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh);
     // Cannot copy a GPU mesh because it would require reference counting of GPU resources.
     GPUMesh(const GPUMesh&) = delete;
     GPUMesh(GPUMesh&&);
@@ -26,7 +28,7 @@ public:
     // Generate a number of GPU meshes from a particular model file.
     // Multiple meshes may be generated if there are multiple sub-meshes in the file
     static std::vector<GPUMesh> loadMeshGPU(std::filesystem::path filePath, bool normalize = false);
-    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& filePath);
+    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath);
 
     // Cannot copy a GPU mesh because it would require reference counting of GPU resources.
     GPUMesh& operator=(const GPUMesh&) = delete;
@@ -39,7 +41,11 @@ public:
 
     Mesh cpuMesh;
 
+    void drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp) const;
+
 private:
+    WireframeDraw wfDraw;
+
     void moveInto(GPUMesh&&);
     void freeGpuMemory();
 
