@@ -16,11 +16,6 @@ target_link_libraries(Micro_Meshes PRIVATE CGFramework)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 
-# Copy all files in the resources folder to the build directory after every successful build.
-add_custom_command(TARGET Micro_Meshes POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy_directory
-	"${CMAKE_CURRENT_LIST_DIR}/resources/" "$<TARGET_FILE_DIR:Micro_Meshes>/resources/")
-
 # We would like to copy the files when they changed. Even if no *.cpp files were modified (and
 # thus no build is triggered). We tell CMake that the executable depends on the shader files in
 # the build directory. We also tell it how to generate those files (by copying them from the

@@ -24,8 +24,8 @@ DISABLE_WARNINGS_POP()
 
 class Application {
 public:
-    Application(): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
-        mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/umesh_monkey_anim.gltf", RESOURCE_ROOT "resources/umesh_monkey.gltf");
+    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath);
 
         try {
             skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/skinning.vert").addFS(RESOURCE_ROOT "shaders/skinning.frag").build();
@@ -81,8 +81,31 @@ private:
     }
 };
 
-int main() {
-    Application app;
+int main(const int argc, char* argv[]) {
+    if(argc == 1) {
+        std::cerr << "Did not specify micro mesh file in the command line.";
+        return 1;
+    }
+
+    const std::filesystem::path umeshPath(argv[1]);
+
+    const auto parentDir = umeshPath.parent_path();
+    const auto filenameStem = umeshPath.stem().string();
+    const auto extension = umeshPath.extension().string();
+
+    //GLTF has 2 file extension: *.gltf and *.glb. We select which one is present.
+    const auto umeshAnimPathGLTF = parentDir / (filenameStem + "_anim" + ".gltf");
+    const auto umeshAnimPathGLB = parentDir / (filenameStem + "_anim" + ".glb");
+
+    std::filesystem::path umeshAnimPath;
+    if(exists(umeshAnimPathGLTF)) umeshAnimPath = umeshAnimPathGLTF;
+    else if(exists(umeshAnimPathGLB)) umeshAnimPath = umeshAnimPathGLB;
+    else {
+        std::cerr << "Could not find animation data. Remember that it has to be in the same directory.";
+        return 1;
+    }
+
+    Application app(umeshPath, umeshAnimPath);
     app.update();
 
     return 0;
