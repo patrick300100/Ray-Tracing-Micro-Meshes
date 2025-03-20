@@ -3,6 +3,8 @@
 #include <framework/disable_all_warnings.h>
 #include <framework/mesh.h>
 #include <framework/shader.h>
+
+#include "WireframeDraw.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec3.hpp>
 DISABLE_WARNINGS_POP()
@@ -13,13 +15,6 @@ DISABLE_WARNINGS_POP()
 
 struct MeshLoadingException : public std::runtime_error {
     using std::runtime_error::runtime_error;
-};
-
-struct WireframeVertex {
-    glm::vec3 position;
-    glm::vec3 displacement;
-    glm::ivec4 boneIndices;
-    glm::vec4 boneWeights;
 };
 
 class GPUMesh {
@@ -46,10 +41,11 @@ public:
 
     Mesh cpuMesh;
 
-    void drawBaseEdges(const std::vector<glm::mat4>& bTs); //Draw edges of base mesh
-    void drawMicroEdges(const std::vector<glm::mat4>& bTs); //Draw edges of micro mesh
+    void drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp) const;
 
 private:
+    WireframeDraw wfDraw;
+
     void moveInto(GPUMesh&&);
     void freeGpuMemory();
 
@@ -62,11 +58,4 @@ private:
     GLuint m_vbo { INVALID };
     GLuint m_vao { INVALID };
     GLuint m_uboBoneMatrices { INVALID };
-
-
-    std::vector<WireframeVertex> baseVerticesLine;
-    GLuint buffer_wire_border { INVALID }, vao_wire_border { INVALID };
-
-    std::vector<WireframeVertex> microVerticesLine;
-    GLuint buffer_wire_inner_border { INVALID }, vao_wire_inner_border { INVALID };
 };

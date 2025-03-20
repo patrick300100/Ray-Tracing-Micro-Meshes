@@ -8,6 +8,7 @@ add_subdirectory("framework")
 add_executable(Micro_Meshes
     "src/application.cpp"
 	"src/mesh.cpp"
+	"src/WireframeDraw.cpp"
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
