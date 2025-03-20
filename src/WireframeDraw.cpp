@@ -200,7 +200,7 @@ void WireframeDraw::drawMicroEdges(const std::vector<glm::mat4> &bTs) const {
 
 		const auto interpolatedSkinMatrix = baryCoords.x * bv0SkinMatrix + baryCoords.y * bv1SkinMatrix + baryCoords.z * bv2SkinMatrix;
 		const auto uvNewPos = glm::vec4(uv.position, 1.0f) * interpolatedSkinMatrix + glm::vec4(uv.displacement, 1.0f) * glm::vec4(baryCoords.x * bv0.normal + baryCoords.y * bv1.normal + baryCoords.z * bv2.normal, 0.0f) * interpolatedSkinMatrix;
-		const auto uvNewPosXYZ = glm::vec3{uvNewPos.x / uvNewPos.w, uvNewPos.y / uvNewPos.w, uvNewPos.z / uvNewPos.w};
+		const auto uvNewPosXYZ = glm::vec3{uvNewPos.x, uvNewPos.y, uvNewPos.z};
 
 		//Add small offset to avoid z-fighting
 		newVs.emplace_back(uvNewPosXYZ + 0.001f * uv.displacement, uv.displacement, uv.baseTriangleIndex);
