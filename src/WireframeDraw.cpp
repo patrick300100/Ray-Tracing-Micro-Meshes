@@ -80,11 +80,51 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 }
 
 WireframeDraw::~WireframeDraw() {
+	freeGpuMemory();
+}
+
+WireframeDraw::WireframeDraw(WireframeDraw&& other) noexcept:
+	hashSet(std::move(other.hashSet)),
+	mesh(std::move(other.mesh)),
+	edgeData(std::move(other.edgeData)),
+	baseVBO(other.baseVBO),
+	baseVAO(other.baseVAO),
+	microVBO(other.microVBO),
+	microVAO(other.microVAO)
+{
+	other.baseVBO = 0;
+	other.baseVAO = 0;
+	other.microVBO = 0;
+	other.microVAO = 0;
+}
+
+WireframeDraw& WireframeDraw::operator=(WireframeDraw&& other) noexcept {
+	if(this != &other) {
+		freeGpuMemory();
+
+		hashSet = std::move(other.hashSet);
+		mesh = std::move(other.mesh);
+		edgeData = std::move(other.edgeData);
+
+		std::swap(baseVBO, other.baseVBO);
+		std::swap(baseVAO, other.baseVAO);
+		std::swap(microVBO, other.microVBO);
+		std::swap(microVAO, other.microVAO);
+	}
+
+	return *this;
+}
+
+void WireframeDraw::freeGpuMemory() {
 	glDeleteVertexArrays(1, &baseVAO);
 	glDeleteVertexArrays(1, &microVAO);
-
 	glDeleteBuffers(1, &baseVBO);
 	glDeleteBuffers(1, &microVBO);
+
+	baseVAO = 0;
+	microVAO = 0;
+	baseVBO = 0;
+	microVBO = 0;
 }
 
 void WireframeDraw::hash_combine(size_t& seed, const float& v) {

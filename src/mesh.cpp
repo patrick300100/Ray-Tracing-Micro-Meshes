@@ -60,7 +60,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh): cpuMesh(cpu
     m_numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
 }
 
-GPUMesh::GPUMesh(GPUMesh&& other): wfDraw(cpuMesh)
+GPUMesh::GPUMesh(GPUMesh&& other): wfDraw(std::move(other.wfDraw))
 {
     moveInto(std::move(other));
 }

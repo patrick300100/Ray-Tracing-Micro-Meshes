@@ -55,9 +55,16 @@ class WireframeDraw {
   static void hash_combine(size_t& seed, const float& v);
   bool contains(const glm::vec3& posA, const glm::vec3& posB) const;
 
+  void freeGpuMemory();
+
 public:
   explicit WireframeDraw(const Mesh& m);
+  WireframeDraw(const WireframeDraw&) = delete;
+  WireframeDraw(WireframeDraw&& other) noexcept;
   ~WireframeDraw();
+
+  WireframeDraw& operator=(const WireframeDraw&) = delete;
+  WireframeDraw& operator=(WireframeDraw&& other) noexcept;
 
   void drawBaseEdges(const std::vector<glm::mat4>& bTs) const;
   void drawMicroEdges(const std::vector<glm::mat4>& bTs) const;
