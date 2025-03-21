@@ -17,9 +17,6 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
     glBindBuffer(GL_UNIFORM_BUFFER, uboBoneMatrices);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
-    // Figure out if this mesh has texture coordinates
-    m_hasTextureCoords = static_cast<bool>(cpuMesh.material.kdTexture);
-
     // Create VAO and bind it so subsequent creations of VBO and IBO are bound to this VAO
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
@@ -40,21 +37,18 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
     glEnableVertexAttribArray(2);
     glEnableVertexAttribArray(3);
     glEnableVertexAttribArray(4);
-    glEnableVertexAttribArray(5);
     // We tell OpenGL what each vertex looks like and how they are mapped to the shader (location = ...).
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, texCoord));
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneIndices));
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneWeights));
-    glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, displacement));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneIndices));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneWeights));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, displacement));
     // Reuse all attributes for each instance
     glVertexAttribDivisor(0, 0);
     glVertexAttribDivisor(1, 0);
     glVertexAttribDivisor(2, 0);
     glVertexAttribDivisor(3, 0);
     glVertexAttribDivisor(4, 0);
-    glVertexAttribDivisor(5, 0);
 
     // Each triangle has 3 vertices.
     numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
@@ -108,11 +102,6 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
     return gpuMeshes;
 }
 
-bool GPUMesh::hasTextureCoords() const
-{
-    return m_hasTextureCoords;
-}
-
 void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
     glBufferSubData(GL_UNIFORM_BUFFER, 0, boneMatrices.size() * sizeof(glm::mat4), boneMatrices.data());
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
@@ -126,14 +115,12 @@ void GPUMesh::moveInto(GPUMesh&& other)
 {
     freeGpuMemory();
     numIndices = other.numIndices;
-    m_hasTextureCoords = other.m_hasTextureCoords;
     ibo = other.ibo;
     vbo = other.vbo;
     vao = other.vao;
     uboBoneMatrices = other.uboBoneMatrices;
 
     other.numIndices = 0;
-    other.m_hasTextureCoords = other.m_hasTextureCoords;
     other.ibo = INVALID;
     other.vbo = INVALID;
     other.vao = INVALID;

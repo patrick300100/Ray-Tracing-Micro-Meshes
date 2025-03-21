@@ -61,15 +61,6 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
                 }
             }
 
-            // Extract texture coordinates
-            if(primitive.attributes.contains("TEXCOORD_0")) {
-                const auto texCoords = getAttributeData<glm::vec2>(primitive, "TEXCOORD_0");
-
-                for(size_t j = 0; j < texCoords.size(); j++) {
-                    vertices[j].texCoord = texCoords[j];
-                }
-            }
-
             // Extract per-vertex bone indices
             if(primitive.attributes.contains("JOINTS_0")) {
                 auto processJoints = [&]<typename T0>(T0 /*type*/) {

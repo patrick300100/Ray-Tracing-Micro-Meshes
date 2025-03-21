@@ -34,8 +34,6 @@ public:
     GPUMesh& operator=(const GPUMesh&) = delete;
     GPUMesh& operator=(GPUMesh&&);
 
-    bool hasTextureCoords() const;
-
     // Bind VAO and call glDrawElements.
     void draw(const std::vector<glm::mat4>& boneMatrices) const;
 
@@ -53,7 +51,6 @@ private:
     static constexpr GLuint INVALID = 0xFFFFFFFF;
 
     GLsizei numIndices { 0 };
-    bool m_hasTextureCoords { false };
     GLuint ibo { INVALID };
     GLuint vbo { INVALID };
     GLuint vao { INVALID };

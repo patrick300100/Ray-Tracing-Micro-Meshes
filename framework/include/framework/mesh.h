@@ -58,7 +58,6 @@ struct Triangle {
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
-	glm::vec2 texCoord; // Texture coordinate
 
 	glm::ivec4 boneIndices = glm::ivec4(0);
 	glm::vec4 boneWeights = glm::vec4(0.0f);
@@ -66,20 +65,6 @@ struct Vertex {
 	glm::vec3 displacement;
 
 	[[nodiscard]] constexpr bool operator==(const Vertex&) const noexcept = default;
-};
-
-struct Material {
-	glm::vec3 kd; // Diffuse color
-	glm::vec3 ks{ 0.0f };
-	float shininess{ 1.0f };
-	float transparency{ 1.0f };
-
-	// Optional texture that replaces kd; use as follows:
-	// 
-	// if (material.kdTexture) {
-	//   material.kdTexture->getTexel(...);
-	// }
-	std::shared_ptr<Image> kdTexture;
 };
 
 struct Bone {
@@ -100,8 +85,6 @@ struct Bone {
 struct Mesh {
 	std::vector<Vertex> vertices;
 	std::vector<Triangle> triangles;
-
-	Material material;
 
 	std::vector<Bone> bones;
 
