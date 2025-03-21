@@ -5,13 +5,14 @@ layout(std140, binding = 0) uniform BoneMatrices {
 };
 
 layout(location = 0) uniform mat4 mvpMatrix;
+layout(location = 1) uniform float displacementScale;
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec2 texCoord;
 layout(location = 3) in ivec4 boneIndices;
 layout(location = 4) in vec4 boneWeights;
-layout(location = 5) in vec4 displacement;
+layout(location = 5) in vec3 displacement;
 
 out vec3 fragNormal;
 
@@ -23,5 +24,5 @@ void main() {
         boneWeights.w * boneTransforms[boneIndices.w];
 
     fragNormal = normal;
-    gl_Position = mvpMatrix * skinMatrix * vec4(position, 1.0);
+    gl_Position = mvpMatrix * skinMatrix * vec4(position + displacementScale * displacement, 1.0);
 }

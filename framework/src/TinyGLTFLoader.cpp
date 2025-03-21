@@ -6,9 +6,12 @@
 
 TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo) {
     std::string err, warn;
+    tinygltf::TinyGLTF loader;
 
-    if(tinygltf::TinyGLTF loader; !loader.LoadASCIIFromFile(&model, &err, &warn, animFilePath.string())) {
-        throw std::runtime_error("Failed to load GLTF: " + err);
+    if(animFilePath.extension().string() == ".gltf") {
+        if(!loader.LoadASCIIFromFile(&model, &err, &warn, animFilePath.string())) throw std::runtime_error("Failed to load GLTF: " + err);
+    } else {
+        if(!loader.LoadBinaryFromFile(&model, &err, &warn, animFilePath.string())) throw std::runtime_error("Failed to load GLB: " + err);
     }
 
     if(!warn.empty()) std::cerr << "GLTF Warning: " << warn << std::endl;

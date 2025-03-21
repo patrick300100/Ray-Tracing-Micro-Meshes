@@ -50,11 +50,7 @@ public:
         interpolationMode = im;
     }
 
-    T getTransformation(float currentTime) {
-        //Compute time in animation time
-        float animDuration = std::prev(transformations.end())->first;
-        float animTime = std::fmod(currentTime, animDuration);
-
+    T getTransformation(float animTime) {
         if(transformations.contains(animTime)) return transformations[animTime]; //Immediately return transformation if map contains it
 
         //Otherwise we need to interpolate between the two entries that is directly before and after the animation time
@@ -71,6 +67,10 @@ public:
         }
 
         throw std::runtime_error("There are only 3 interpolation modes, so code should never reach this.");
+    }
+
+    float animationDuration() {
+        return std::prev(transformations.end())->first;
     }
 };
 

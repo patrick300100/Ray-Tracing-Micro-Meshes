@@ -24,8 +24,8 @@ DISABLE_WARNINGS_POP()
 
 class Application {
 public:
-    Application(): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
-        mesh = GPUMesh::loadGLTFMeshGPU(RESOURCE_ROOT "resources/umesh_monkey_anim.gltf", RESOURCE_ROOT "resources/umesh_monkey.gltf");
+    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath);
 
         try {
             skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/skinning.vert").addFS(RESOURCE_ROOT "shaders/skinning.frag").build();
@@ -39,6 +39,8 @@ public:
         while (!m_window.shouldClose()) {
             m_window.updateInput();
 
+            if(!gui.animation.pause) gui.animation.time = std::fmod(glfwGetTime(), mesh[0].cpuMesh.animationDuration());
+
             menu();
 
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -50,12 +52,15 @@ public:
             for(GPUMesh& m : mesh) {
                 skinningShader.bind();
                 glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
+                glUniform1f(1, gui.displace);
 
-                auto bTs = m.cpuMesh.boneTransformations(glfwGetTime()); //bone transformations
+                auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
                 m.draw(bTs);
 
-                edgesShader.bind();
-                m.drawWireframe(bTs, mvpMatrix);
+                if(gui.wireframe) {
+                    edgesShader.bind();
+                    m.drawWireframe(bTs, mvpMatrix);
+                }
             }
 
             m_window.swapBuffers();
@@ -75,14 +80,69 @@ private:
     glm::mat4 m_projectionMatrix = glm::perspective(glm::radians(80.0f), 1.0f, 0.1f, 30.0f);
     glm::mat4 m_modelMatrix { 1.0f };
 
+    struct {
+        bool wireframe = false;
+        float displace = 0.0f;
+
+        struct {
+            float time = 0.0f;
+            bool pause = false;
+        } animation;
+    } gui;
+
     void menu() {
         ImGui::Begin("Window");
+
+        if(ImGui::BeginTabBar("MainTabs")) {
+            if(ImGui::BeginTabItem("µMesh")) {
+                ImGui::Checkbox("Wireframe", &gui.wireframe);
+                ImGui::SliderFloat("Displace", &gui.displace, 0.0f, 1.0f);
+
+                ImGui::EndTabItem();
+            }
+
+            if(ImGui::BeginTabItem("Animation")) {
+                ImGui::Checkbox("Pause", &gui.animation.pause);
+
+                ImGui::BeginDisabled(!gui.animation.pause);
+                ImGui::SliderFloat("Time", &gui.animation.time, 0.0f, mesh[0].cpuMesh.animationDuration() - 0.001f, "%.3f");
+                ImGui::EndDisabled();
+
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
+        }
+
         ImGui::End();
     }
 };
 
-int main() {
-    Application app;
+int main(const int argc, char* argv[]) {
+    if(argc == 1) {
+        std::cerr << "Did not specify micro mesh file as program argument";
+        return 1;
+    }
+
+    const std::filesystem::path umeshPath(argv[1]);
+
+    const auto parentDir = umeshPath.parent_path();
+    const auto filenameStem = umeshPath.stem().string();
+    const auto extension = umeshPath.extension().string();
+
+    //GLTF has 2 file extension: .gltf and .glb. We select which one is present.
+    const auto umeshAnimPathGLTF = parentDir / (filenameStem + "_anim" + ".gltf");
+    const auto umeshAnimPathGLB = parentDir / (filenameStem + "_anim" + ".glb");
+
+    std::filesystem::path umeshAnimPath;
+    if(exists(umeshAnimPathGLTF)) umeshAnimPath = umeshAnimPathGLTF;
+    else if(exists(umeshAnimPathGLB)) umeshAnimPath = umeshAnimPathGLB;
+    else {
+        std::cerr << "Could not find animation data. Remember that it has to be in the same directory.";
+        return 1;
+    }
+
+    Application app(umeshPath, umeshAnimPath);
     app.update();
 
     return 0;
