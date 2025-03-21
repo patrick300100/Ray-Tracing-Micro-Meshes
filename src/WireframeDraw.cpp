@@ -167,7 +167,7 @@ void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4> &bTs) const {
     glEnable(GL_BLEND);
     glEnable(GL_LINE_SMOOTH);
 
-    glLineWidth(3.0f);
+    glLineWidth(1.0f);
     glBindVertexArray(baseVAO);
     glDrawArrays(GL_LINES, 0, edgeData.baseVertices.size());
 
@@ -212,7 +212,7 @@ void WireframeDraw::drawMicroEdges(const std::vector<glm::mat4> &bTs) const {
 	glEnable(GL_BLEND);
 	glEnable(GL_LINE_SMOOTH);
 
-	glLineWidth(0.2f);
+	glLineWidth(0.5f);
 	glBindVertexArray(microVAO);
 	glDrawArrays(GL_LINES, 0, edgeData.microVertices.size());
 

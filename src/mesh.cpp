@@ -155,11 +155,11 @@ void GPUMesh::freeGpuMemory()
 void GPUMesh::drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp, const float displacementScale) const {
     glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvp));
     glUniform1f(1, displacementScale);
-    glUniform3fv(2, 1, glm::value_ptr(glm::vec3(0.235f, 0.235f, 0.235f)));
+    glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.235f, 0.235f, 0.235f, 1.0f)));
 
     wfDraw.drawBaseEdges(bTs);
 
-    glUniform3fv(2, 1, glm::value_ptr(glm::vec3(0.435f, 0.435f, 0.435f)));
+    glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.435f, 0.435f, 0.435f, 0.5f)));
 
     wfDraw.drawMicroEdges(bTs);
 }
