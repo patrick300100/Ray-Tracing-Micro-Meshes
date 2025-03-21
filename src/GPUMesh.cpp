@@ -4,14 +4,13 @@
 #include <glm/gtc/type_ptr.inl>
 
 #include "mesh_io_gltf.h"
-#include "tangent.h"
 DISABLE_WARNINGS_PUSH()
 #include <fmt/format.h>
 DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
+GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
     //Create uniform buffer to store bone transformations
     glGenBuffers(1, &uboBoneMatrices);
     glBindBuffer(GL_UNIFORM_BUFFER, uboBoneMatrices);
@@ -54,33 +53,19 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
     numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
 }
 
-GPUMesh::GPUMesh(GPUMesh&& other): wfDraw(std::move(other.wfDraw))
-{
+GPUMesh::GPUMesh(GPUMesh&& other) noexcept: wfDraw(std::move(other.wfDraw)) {
     moveInto(std::move(other));
 }
 
-GPUMesh::~GPUMesh()
-{
+GPUMesh::~GPUMesh() {
     freeGpuMemory();
 }
 
-GPUMesh& GPUMesh::operator=(GPUMesh&& other)
-{
+GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     moveInto(std::move(other));
     return *this;
 }
 
-// std::vector<GPUMesh> GPUMesh::loadMeshGPU(std::filesystem::path filePath, bool normalize) {
-//     if (!std::filesystem::exists(filePath))
-//         throw MeshLoadingException(fmt::format("File {} does not exist", filePath.string().c_str()));
-//
-//     // Generate GPU-side meshes for all sub-meshes
-//     std::vector<Mesh> subMeshes = loadMesh(filePath, normalize);
-//     std::vector<GPUMesh> gpuMeshes;
-//     //for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
-//
-//     return gpuMeshes;
-// }
 
 std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
@@ -94,7 +79,6 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    // Generate GPU-side meshes for all sub-meshes
     std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh(read_micromesh);
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
@@ -103,16 +87,14 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
 }
 
 void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, boneMatrices.size() * sizeof(glm::mat4), boneMatrices.data());
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
-    
-    // Draw the mesh's triangles
+
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
 }
 
-void GPUMesh::moveInto(GPUMesh&& other)
-{
+void GPUMesh::moveInto(GPUMesh&& other) {
     freeGpuMemory();
     numIndices = other.numIndices;
     ibo = other.ibo;
@@ -127,8 +109,7 @@ void GPUMesh::moveInto(GPUMesh&& other)
     other.uboBoneMatrices = INVALID;
 }
 
-void GPUMesh::freeGpuMemory()
-{
+void GPUMesh::freeGpuMemory() {
     if (vao != INVALID)
         glDeleteVertexArrays(1, &vao);
     if (vbo != INVALID)
@@ -150,5 +131,3 @@ void GPUMesh::drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& 
 
     wfDraw.drawMicroEdges(bTs);
 }
-
-

@@ -48,8 +48,8 @@ class WireframeDraw {
   } edgeData; //Each consecutive entry creates a line. So [0] and [1] create a line, [2] and [3] create a line, etc.
 
   //Buffers
-  GLuint baseVBO, baseVAO;
-  GLuint microVBO, microVAO;
+  GLuint baseVBO { 0 }, baseVAO { 0 };
+  GLuint microVBO { 0 }, microVAO { 0 };
 
   static size_t hash(const glm::vec3& posA, const glm::vec3& posB);
   static void hash_combine(size_t& seed, const float& v);
