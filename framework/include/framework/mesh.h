@@ -88,10 +88,10 @@ struct Bone {
 	TransformationChannel<glm::vec3> scale;
 	glm::mat4 ibm{};
 
-	[[nodiscard]] glm::mat4 transformationMatrix(const float currentTime) {
-		const auto t1 = translation.getTransformation(currentTime);
-		const auto t2 = rotation.getTransformation(currentTime);
-		const auto t3 = scale.getTransformation(currentTime);
+	[[nodiscard]] glm::mat4 transformationMatrix(const float animTime) {
+		const auto t1 = translation.getTransformation(animTime);
+		const auto t2 = rotation.getTransformation(animTime);
+		const auto t3 = scale.getTransformation(animTime);
 
 		return glm::translate(glm::mat4(1.0f), t1) * glm::mat4_cast(t2) * glm::scale(glm::mat4(1.0f), t3);
 	}
@@ -109,11 +109,11 @@ struct Mesh {
 
 	SubdivisionMesh umesh;
 
-	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float currentTime) {
+	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float animTime) {
 		std::vector<glm::mat4> transformations = {};
 
 		for(int i = 0; i < bones.size(); i++) {
-			auto globalT = globalTransform(currentTime, i);
+			auto globalT = globalTransform(animTime, i);
 
 			transformations.push_back(globalT * bones[i].ibm);
 		}
@@ -121,10 +121,14 @@ struct Mesh {
 		return transformations;
 	}
 
-	glm::mat4 globalTransform(const float currentTime, const int index) {
-		if(parent[index] == -1) return bones[index].transformationMatrix(currentTime);
+	glm::mat4 globalTransform(const float animTime, const int index) {
+		if(parent[index] == -1) return bones[index].transformationMatrix(animTime);
 
-		return globalTransform(currentTime, parent[index]) * bones[index].transformationMatrix(currentTime);
+		return globalTransform(animTime, parent[index]) * bones[index].transformationMatrix(animTime);
+	}
+
+	float animationDuration() {
+		return bones[0].translation.animationDuration();
 	}
 
 	std::vector<glm::uvec3> baseTriangleIndices;
