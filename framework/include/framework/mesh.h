@@ -107,8 +107,6 @@ struct Mesh {
 
 	std::vector<int> parent;
 
-	SubdivisionMesh umesh;
-
 	[[nodiscard]] std::vector<glm::mat4> boneTransformations(const float animTime) {
 		std::vector<glm::mat4> transformations = {};
 

@@ -19,7 +19,7 @@ struct MeshLoadingException : public std::runtime_error {
 
 class GPUMesh {
 public:
-    GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh);
+    explicit GPUMesh(const Mesh& cpuMesh);
     // Cannot copy a GPU mesh because it would require reference counting of GPU resources.
     GPUMesh(const GPUMesh&) = delete;
     GPUMesh(GPUMesh&&);

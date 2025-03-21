@@ -142,8 +142,6 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
 
         myMesh.parent = std::move(parent);
 
-        myMesh.umesh = umeshReadInfo.get_subdivision_mesh();
-
         for(auto& v : myMesh.vertices) {
             v.displacement = getVertexDisplacement(v.position);
         }

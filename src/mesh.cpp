@@ -11,7 +11,7 @@ DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh, const SubdivisionMesh& umesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
+GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
     //Create uniform buffer to store bone transformations
     glGenBuffers(1, &m_uboBoneMatrices);
     glBindBuffer(GL_UNIFORM_BUFFER, m_uboBoneMatrices);
@@ -103,7 +103,7 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
     // Generate GPU-side meshes for all sub-meshes
     std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh(read_micromesh);
     std::vector<GPUMesh> gpuMeshes;
-    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, mesh.umesh); }
+    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
 
     return gpuMeshes;
 }
