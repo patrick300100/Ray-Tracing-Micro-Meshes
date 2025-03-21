@@ -1,4 +1,4 @@
-#include "mesh.h"
+#include "GPUMesh.h"
 #include <framework/disable_all_warnings.h>
 #include <framework/TinyGLTFLoader.h>
 #include <glm/gtc/type_ptr.inl>
