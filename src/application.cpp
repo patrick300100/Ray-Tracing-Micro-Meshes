@@ -22,7 +22,7 @@ DISABLE_WARNINGS_POP()
 
 class Application {
 public:
-    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): m_window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
+    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
         mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath);
 
         try {
@@ -34,8 +34,8 @@ public:
     }
 
     void update() {
-        while (!m_window.shouldClose()) {
-            m_window.updateInput();
+        while (!window.shouldClose()) {
+            window.updateInput();
 
             if(!gui.animation.pause) gui.animation.time = std::fmod(glfwGetTime(), mesh[0].cpuMesh.animationDuration());
 
@@ -45,8 +45,8 @@ public:
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
 
-            const glm::mat4 mvMatrix = trackball->viewMatrix() * m_modelMatrix;
-            const glm::mat4 mvpMatrix = m_projectionMatrix * mvMatrix;
+            const glm::mat4 mvMatrix = trackball->viewMatrix() * modelMatrix;
+            const glm::mat4 mvpMatrix = projectionMatrix * mvMatrix;
 
             for(GPUMesh& m : mesh) {
                 skinningShader.bind();
@@ -64,22 +64,22 @@ public:
                 }
             }
 
-            m_window.swapBuffers();
+            window.swapBuffers();
         }
     }
 
 private:
-    Window m_window;
+    Window window;
 
     Shader skinningShader;
     Shader edgesShader;
 
     std::vector<GPUMesh> mesh;
 
-    std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&m_window, glm::radians(50.0f));
+    std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 
-    glm::mat4 m_projectionMatrix = glm::perspective(glm::radians(80.0f), 1.0f, 0.1f, 30.0f);
-    glm::mat4 m_modelMatrix { 1.0f };
+    glm::mat4 projectionMatrix = glm::perspective(glm::radians(80.0f), 1.0f, 0.1f, 30.0f);
+    glm::mat4 modelMatrix { 1.0f };
 
     struct {
         bool wireframe = false;

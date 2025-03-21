@@ -13,25 +13,25 @@ DISABLE_WARNINGS_POP()
 
 GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
     //Create uniform buffer to store bone transformations
-    glGenBuffers(1, &m_uboBoneMatrices);
-    glBindBuffer(GL_UNIFORM_BUFFER, m_uboBoneMatrices);
+    glGenBuffers(1, &uboBoneMatrices);
+    glBindBuffer(GL_UNIFORM_BUFFER, uboBoneMatrices);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
     // Figure out if this mesh has texture coordinates
     m_hasTextureCoords = static_cast<bool>(cpuMesh.material.kdTexture);
 
     // Create VAO and bind it so subsequent creations of VBO and IBO are bound to this VAO
-    glGenVertexArrays(1, &m_vao);
-    glBindVertexArray(m_vao);
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
 
     // Create vertex buffer object (VBO)
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.vertices.size() * sizeof(decltype(cpuMesh.vertices)::value_type)), cpuMesh.vertices.data(), GL_STATIC_DRAW);
 
     // Create index buffer object (IBO)
-    glGenBuffers(1, &m_ibo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo);
+    glGenBuffers(1, &ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.baseTriangleIndices.size() * sizeof(decltype(cpuMesh.baseTriangleIndices)::value_type)), cpuMesh.baseTriangleIndices.data(), GL_STATIC_DRAW);
 
     // Tell OpenGL that we will be using vertex attributes 0, 1, 2, 3, and 4.
@@ -57,7 +57,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): cpuMesh(cpuMesh), wfDraw(cpuMesh) {
     glVertexAttribDivisor(5, 0);
 
     // Each triangle has 3 vertices.
-    m_numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
+    numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
 }
 
 GPUMesh::GPUMesh(GPUMesh&& other): wfDraw(std::move(other.wfDraw))
@@ -115,41 +115,41 @@ bool GPUMesh::hasTextureCoords() const
 
 void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
     glBufferSubData(GL_UNIFORM_BUFFER, 0, boneMatrices.size() * sizeof(glm::mat4), boneMatrices.data());
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_uboBoneMatrices);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
     
     // Draw the mesh's triangles
-    glBindVertexArray(m_vao);
-    glDrawElements(GL_TRIANGLES, m_numIndices, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(vao);
+    glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
 }
 
 void GPUMesh::moveInto(GPUMesh&& other)
 {
     freeGpuMemory();
-    m_numIndices = other.m_numIndices;
+    numIndices = other.numIndices;
     m_hasTextureCoords = other.m_hasTextureCoords;
-    m_ibo = other.m_ibo;
-    m_vbo = other.m_vbo;
-    m_vao = other.m_vao;
-    m_uboBoneMatrices = other.m_uboBoneMatrices;
+    ibo = other.ibo;
+    vbo = other.vbo;
+    vao = other.vao;
+    uboBoneMatrices = other.uboBoneMatrices;
 
-    other.m_numIndices = 0;
+    other.numIndices = 0;
     other.m_hasTextureCoords = other.m_hasTextureCoords;
-    other.m_ibo = INVALID;
-    other.m_vbo = INVALID;
-    other.m_vao = INVALID;
-    other.m_uboBoneMatrices = INVALID;
+    other.ibo = INVALID;
+    other.vbo = INVALID;
+    other.vao = INVALID;
+    other.uboBoneMatrices = INVALID;
 }
 
 void GPUMesh::freeGpuMemory()
 {
-    if (m_vao != INVALID)
-        glDeleteVertexArrays(1, &m_vao);
-    if (m_vbo != INVALID)
-        glDeleteBuffers(1, &m_vbo);
-    if (m_ibo != INVALID)
-        glDeleteBuffers(1, &m_ibo);
-    if (m_uboBoneMatrices != INVALID)
-        glDeleteBuffers(1, &m_uboBoneMatrices);
+    if (vao != INVALID)
+        glDeleteVertexArrays(1, &vao);
+    if (vbo != INVALID)
+        glDeleteBuffers(1, &vbo);
+    if (ibo != INVALID)
+        glDeleteBuffers(1, &ibo);
+    if (uboBoneMatrices != INVALID)
+        glDeleteBuffers(1, &uboBoneMatrices);
 }
 
 void GPUMesh::drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp, const float displacementScale) const {

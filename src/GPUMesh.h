@@ -52,10 +52,10 @@ private:
 private:
     static constexpr GLuint INVALID = 0xFFFFFFFF;
 
-    GLsizei m_numIndices { 0 };
+    GLsizei numIndices { 0 };
     bool m_hasTextureCoords { false };
-    GLuint m_ibo { INVALID };
-    GLuint m_vbo { INVALID };
-    GLuint m_vao { INVALID };
-    GLuint m_uboBoneMatrices { INVALID };
+    GLuint ibo { INVALID };
+    GLuint vbo { INVALID };
+    GLuint vao { INVALID };
+    GLuint uboBoneMatrices { INVALID };
 };
