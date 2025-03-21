@@ -41,7 +41,7 @@ public:
 
     Mesh cpuMesh;
 
-    void drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp) const;
+    void drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp, float displacementScale) const;
 
 private:
     WireframeDraw wfDraw;

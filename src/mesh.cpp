@@ -152,9 +152,9 @@ void GPUMesh::freeGpuMemory()
         glDeleteBuffers(1, &m_uboBoneMatrices);
 }
 
-void GPUMesh::drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp) const {
+void GPUMesh::drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp, const float displacementScale) const {
     glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvp));
-    glUniform1f(1, 1.0f);
+    glUniform1f(1, displacementScale);
     glUniform3fv(2, 1, glm::value_ptr(glm::vec3(0.235f, 0.235f, 0.235f)));
 
     wfDraw.drawBaseEdges(bTs);

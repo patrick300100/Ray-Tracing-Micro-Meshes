@@ -47,19 +47,22 @@ public:
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
 
-            const glm::mat4 mvpMatrix = m_projectionMatrix * trackball->viewMatrix() * m_modelMatrix;
+            const glm::mat4 mvMatrix = trackball->viewMatrix() * m_modelMatrix;
+            const glm::mat4 mvpMatrix = m_projectionMatrix * mvMatrix;
 
             for(GPUMesh& m : mesh) {
                 skinningShader.bind();
                 glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
-                glUniform1f(1, gui.displace);
+                glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(mvMatrix));
+                glUniform1f(2, gui.displace);
+                glUniform3fv(3, 1, glm::value_ptr(trackball->position()));
 
                 auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
                 m.draw(bTs);
 
                 if(gui.wireframe) {
                     edgesShader.bind();
-                    m.drawWireframe(bTs, mvpMatrix);
+                    m.drawWireframe(bTs, mvpMatrix, gui.displace);
                 }
             }
 
