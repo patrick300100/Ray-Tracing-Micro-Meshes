@@ -107,8 +107,6 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
 
             myMesh.vertices = std::move(vertices);
 
-            myMesh.baseTriangleIndices = triangles;
-
             for(const auto& [f, t] : std::views::zip(umesh.faces, triangles)) {
                 std::vector<uVertex> uvs; //micro vertices
                 for(int j = 0; j < f.V.rows(); j++) {

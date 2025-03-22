@@ -73,7 +73,7 @@ public:
         throw std::runtime_error("There are only 3 interpolation modes, so code should never reach this.");
     }
 
-    float animationDuration() {
+    [[nodiscard]] float animationDuration() const {
         return std::prev(transformations.end())->first;
     }
 };

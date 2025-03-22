@@ -13,8 +13,9 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
     glCreateBuffers(1, &uboBoneMatrices);
     glNamedBufferData(uboBoneMatrices, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
+    const auto meshIbo = cpuMesh.baseTriangleIndices();
     glCreateBuffers(1, &ibo);
-    glNamedBufferStorage(ibo, static_cast<GLsizeiptr>(cpuMesh.baseTriangleIndices.size() * sizeof(decltype(cpuMesh.baseTriangleIndices)::value_type)), cpuMesh.baseTriangleIndices.data(), 0);
+    glNamedBufferStorage(ibo, static_cast<GLsizeiptr>(meshIbo.size() * sizeof(decltype(meshIbo)::value_type)), meshIbo.data(), 0);
 
     glCreateBuffers(1, &vbo);
     glNamedBufferStorage(vbo, static_cast<GLsizeiptr>(cpuMesh.vertices.size() * sizeof(decltype(cpuMesh.vertices)::value_type)), cpuMesh.vertices.data(), 0);
