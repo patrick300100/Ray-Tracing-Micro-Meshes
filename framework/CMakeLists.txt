@@ -27,9 +27,10 @@ else()
 		"src/ImGuizmo/ImGuizmo.cpp"
 		"src/TinyGLTFLoader.cpp"
 		"src/MeshIterator.cpp"
+		"src/mesh.cpp"
 	)
 	target_include_directories(CGFramework PRIVATE "include/framework/" PUBLIC "include/")
-	target_link_libraries(CGFramework PUBLIC OpenGL::GL glad glm glfw imgui stb tinyobjloader fmt nativefiledialog toml tinygltf json umeshtools_core)
+	target_link_libraries(CGFramework PUBLIC OpenGL::GL glad glm glfw imgui stb fmt nativefiledialog tinygltf json umeshtools_core)
 	target_compile_features(CGFramework PUBLIC cxx_std_20)
 	set_property(TARGET CGFramework PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()

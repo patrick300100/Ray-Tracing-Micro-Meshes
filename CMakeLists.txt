@@ -7,7 +7,7 @@ add_subdirectory("framework")
 
 add_executable(Micro_Meshes
     "src/application.cpp"
-	"src/mesh.cpp"
+	"src/GPUMesh.cpp"
 	"src/WireframeDraw.cpp"
 )
 

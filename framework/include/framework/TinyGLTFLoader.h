@@ -1,7 +1,12 @@
 #pragma once
+
 #include "mesh.h"
+#include <filesystem>
+#include <framework/disable_all_warnings.h>
+DISABLE_WARNINGS_PUSH()
 #include <tinygltf/tiny_gltf.h>
 #include "mesh_io_gltf.h"
+DISABLE_WARNINGS_POP()
 
 class TinyGLTFLoader {
     tinygltf::Model model;

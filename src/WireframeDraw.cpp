@@ -1,6 +1,7 @@
 #include "WireframeDraw.h"
-
+DISABLE_WARNINGS_PUSH()
 #include <glad/glad.h>
+DISABLE_WARNINGS_POP()
 #include <ranges>
 
 WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.vertices, m.triangles} {

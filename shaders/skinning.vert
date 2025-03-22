@@ -10,10 +10,9 @@ layout(location = 2) uniform float displacementScale;
 
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
-layout(location = 2) in vec2 texCoord;
-layout(location = 3) in ivec4 boneIndices;
-layout(location = 4) in vec4 boneWeights;
-layout(location = 5) in vec3 displacement;
+layout(location = 2) in ivec4 boneIndices;
+layout(location = 3) in vec4 boneWeights;
+layout(location = 4) in vec3 displacement;
 
 out vec3 fragNormal;
 out vec3 fragSurfacePos;

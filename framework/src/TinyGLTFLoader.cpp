@@ -1,8 +1,11 @@
 #include "TinyGLTFLoader.h"
 
+#include <framework/disable_all_warnings.h>
 #include <iostream>
 #include <ranges>
+DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
+DISABLE_WARNINGS_POP()
 
 TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo) {
     std::string err, warn;
@@ -61,15 +64,6 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
                 }
             }
 
-            // Extract texture coordinates
-            if(primitive.attributes.contains("TEXCOORD_0")) {
-                const auto texCoords = getAttributeData<glm::vec2>(primitive, "TEXCOORD_0");
-
-                for(size_t j = 0; j < texCoords.size(); j++) {
-                    vertices[j].texCoord = texCoords[j];
-                }
-            }
-
             // Extract per-vertex bone indices
             if(primitive.attributes.contains("JOINTS_0")) {
                 auto processJoints = [&]<typename T0>(T0 /*type*/) {
@@ -112,8 +106,6 @@ std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
             }
 
             myMesh.vertices = std::move(vertices);
-
-            myMesh.baseTriangleIndices = triangles;
 
             for(const auto& [f, t] : std::views::zip(umesh.faces, triangles)) {
                 std::vector<uVertex> uvs; //micro vertices
