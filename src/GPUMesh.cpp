@@ -11,45 +11,39 @@ DISABLE_WARNINGS_POP()
 #include <vector>
 
 GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
-    //Create uniform buffer to store bone transformations
-    glGenBuffers(1, &uboBoneMatrices);
-    glBindBuffer(GL_UNIFORM_BUFFER, uboBoneMatrices);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
+    glCreateBuffers(1, &uboBoneMatrices);
+    glNamedBufferData(uboBoneMatrices, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
-    // Create VAO and bind it so subsequent creations of VBO and IBO are bound to this VAO
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
+    glCreateBuffers(1, &ibo);
+    glNamedBufferStorage(ibo, static_cast<GLsizeiptr>(cpuMesh.baseTriangleIndices.size() * sizeof(decltype(cpuMesh.baseTriangleIndices)::value_type)), cpuMesh.baseTriangleIndices.data(), 0);
 
-    // Create vertex buffer object (VBO)
-    glGenBuffers(1, &vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.vertices.size() * sizeof(decltype(cpuMesh.vertices)::value_type)), cpuMesh.vertices.data(), GL_STATIC_DRAW);
+    glCreateBuffers(1, &vbo);
+    glNamedBufferStorage(vbo, static_cast<GLsizeiptr>(cpuMesh.vertices.size() * sizeof(decltype(cpuMesh.vertices)::value_type)), cpuMesh.vertices.data(), 0);
 
-    // Create index buffer object (IBO)
-    glGenBuffers(1, &ibo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(cpuMesh.baseTriangleIndices.size() * sizeof(decltype(cpuMesh.baseTriangleIndices)::value_type)), cpuMesh.baseTriangleIndices.data(), GL_STATIC_DRAW);
+    glCreateVertexArrays(1, &vao);
 
-    // Tell OpenGL that we will be using vertex attributes 0, 1, 2, 3, and 4.
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-    glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
-    glEnableVertexAttribArray(4);
-    // We tell OpenGL what each vertex looks like and how they are mapped to the shader (location = ...).
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneIndices));
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, boneWeights));
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, displacement));
-    // Reuse all attributes for each instance
-    glVertexAttribDivisor(0, 0);
-    glVertexAttribDivisor(1, 0);
-    glVertexAttribDivisor(2, 0);
-    glVertexAttribDivisor(3, 0);
-    glVertexAttribDivisor(4, 0);
+    glVertexArrayElementBuffer(vao, ibo);
 
-    // Each triangle has 3 vertices.
+    glVertexArrayVertexBuffer(vao, 0, vbo, 0, sizeof(Vertex));
+
+    glEnableVertexArrayAttrib(vao, 0);
+    glEnableVertexArrayAttrib(vao, 1);
+    glEnableVertexArrayAttrib(vao, 2);
+    glEnableVertexArrayAttrib(vao, 3);
+    glEnableVertexArrayAttrib(vao, 4);
+
+    glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
+    glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
+    glVertexArrayAttribFormat(vao, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneIndices));
+    glVertexArrayAttribFormat(vao, 3, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
+    glVertexArrayAttribFormat(vao, 4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
+
+    glVertexArrayAttribBinding(vao, 0, 0);
+    glVertexArrayAttribBinding(vao, 1, 0);
+    glVertexArrayAttribBinding(vao, 2, 0);
+    glVertexArrayAttribBinding(vao, 3, 0);
+    glVertexArrayAttribBinding(vao, 4, 0);
+    
     numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
 }
 
@@ -87,8 +81,8 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
 }
 
 void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
 
     glBindVertexArray(vao);
     glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
