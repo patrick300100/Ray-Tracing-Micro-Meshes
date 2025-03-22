@@ -12,17 +12,14 @@ struct MeshLoadingException final : std::runtime_error {
 };
 
 class GPUMesh {
-    static constexpr GLuint INVALID = 0xFFFFFFFF;
-
     GLsizei numIndices { 0 };
-    GLuint ibo { INVALID };
-    GLuint vbo { INVALID };
-    GLuint vao { INVALID };
-    GLuint uboBoneMatrices { INVALID };
+    GLuint ibo { 0 };
+    GLuint vbo { 0 };
+    GLuint vao { 0 };
+    GLuint uboBoneMatrices { 0 };
 
     WireframeDraw wfDraw;
 
-    void moveInto(GPUMesh&&);
     void freeGpuMemory();
 
 public:
@@ -30,11 +27,11 @@ public:
 
     explicit GPUMesh(const Mesh& cpuMesh);
     GPUMesh(const GPUMesh&) = delete;
-    GPUMesh(GPUMesh&&) noexcept;
+    GPUMesh(GPUMesh&& other) noexcept;
     ~GPUMesh();
 
     GPUMesh& operator=(const GPUMesh&) = delete;
-    GPUMesh& operator=(GPUMesh&&) noexcept;
+    GPUMesh& operator=(GPUMesh&& other) noexcept;
 
     static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath);
 

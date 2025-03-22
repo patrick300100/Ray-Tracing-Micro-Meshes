@@ -43,12 +43,24 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
     glVertexArrayAttribBinding(vao, 2, 0);
     glVertexArrayAttribBinding(vao, 3, 0);
     glVertexArrayAttribBinding(vao, 4, 0);
-    
+
     numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
 }
 
-GPUMesh::GPUMesh(GPUMesh&& other) noexcept: wfDraw(std::move(other.wfDraw)) {
-    moveInto(std::move(other));
+GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
+    numIndices(other.numIndices),
+    ibo(other.ibo),
+    vbo(other.vbo),
+    vao(other.vao),
+    uboBoneMatrices(other.uboBoneMatrices),
+    wfDraw(std::move(other.wfDraw)),
+    cpuMesh(std::move(other.cpuMesh))
+{
+    other.numIndices = 0;
+    other.ibo = 0;
+    other.vbo = 0;
+    other.vao = 0;
+    other.uboBoneMatrices = 0;
 }
 
 GPUMesh::~GPUMesh() {
@@ -56,10 +68,21 @@ GPUMesh::~GPUMesh() {
 }
 
 GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
-    moveInto(std::move(other));
+    if(this != &other) {
+        freeGpuMemory();
+
+        wfDraw = std::move(other.wfDraw);
+        cpuMesh = std::move(other.cpuMesh);
+
+        std::swap(numIndices, other.numIndices);
+        std::swap(ibo, other.ibo);
+        std::swap(vbo, other.vbo);
+        std::swap(vao, other.vao);
+        std::swap(uboBoneMatrices, other.uboBoneMatrices);
+    }
+
     return *this;
 }
-
 
 std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
@@ -88,30 +111,16 @@ void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
     glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
 }
 
-void GPUMesh::moveInto(GPUMesh&& other) {
-    freeGpuMemory();
-    numIndices = other.numIndices;
-    ibo = other.ibo;
-    vbo = other.vbo;
-    vao = other.vao;
-    uboBoneMatrices = other.uboBoneMatrices;
-
-    other.numIndices = 0;
-    other.ibo = INVALID;
-    other.vbo = INVALID;
-    other.vao = INVALID;
-    other.uboBoneMatrices = INVALID;
-}
-
 void GPUMesh::freeGpuMemory() {
-    if (vao != INVALID)
-        glDeleteVertexArrays(1, &vao);
-    if (vbo != INVALID)
-        glDeleteBuffers(1, &vbo);
-    if (ibo != INVALID)
-        glDeleteBuffers(1, &ibo);
-    if (uboBoneMatrices != INVALID)
-        glDeleteBuffers(1, &uboBoneMatrices);
+    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ibo);
+    glDeleteBuffers(1, &uboBoneMatrices);
+
+    vao = 0;
+    vbo = 0;
+    ibo = 0;
+    uboBoneMatrices = 0;
 }
 
 void GPUMesh::drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp, const float displacementScale) const {
