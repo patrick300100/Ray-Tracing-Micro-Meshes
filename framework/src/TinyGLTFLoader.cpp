@@ -1,8 +1,11 @@
 #include "TinyGLTFLoader.h"
 
+#include <framework/disable_all_warnings.h>
 #include <iostream>
 #include <ranges>
+DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
+DISABLE_WARNINGS_POP()
 
 TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo) {
     std::string err, warn;

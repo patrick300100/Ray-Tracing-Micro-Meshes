@@ -1,10 +1,14 @@
 #pragma once
+
+#include <framework/disable_all_warnings.h>
 #include <map>
 #include <stdexcept>
 #include <string>
+#include <vector>
+DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/quaternion.hpp>
 #include <glm/fwd.hpp>
-#include <glm/ext/matrix_transform.hpp>
+DISABLE_WARNINGS_POP()
 
 template<typename T>
 T interpolate(const T& before, const T& after, float value);

@@ -1,10 +1,9 @@
 #include "GPUMesh.h"
 #include <framework/disable_all_warnings.h>
 #include <framework/TinyGLTFLoader.h>
-#include <glm/gtc/type_ptr.inl>
-
-#include "mesh_io_gltf.h"
 DISABLE_WARNINGS_PUSH()
+#include <glm/gtc/type_ptr.inl>
+#include "mesh_io_gltf.h"
 #include <fmt/format.h>
 DISABLE_WARNINGS_POP()
 #include <iostream>

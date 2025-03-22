@@ -1,9 +1,7 @@
 #pragma once
 
 #include <framework/mesh.h>
-
 #include "WireframeDraw.h"
-
 #include <filesystem>
 #include <framework/opengl_includes.h>
 
