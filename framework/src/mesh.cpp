@@ -81,17 +81,12 @@ struct VertexHash {
         hash_combine(seed, v.position.y);
         hash_combine(seed, v.position.z);
 
-        for(int i = 0; i < 3; i++) {
-            for(int j = 0; j < 4; j++) {
-                hash_combine(seed, v.baseBoneIndices[i][j]);
-            }
-        }
-
-        for(int i = 0; i < 3; i++) {
-            for(int j = 0; j < 4; j++) {
-                hash_combine(seed, v.baseBoneWeights[i][j]);
-            }
-        }
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices0[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices1[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices2[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights0[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights1[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights2[j]);
 
         hash_combine(seed, v.baryCoords.x);
         hash_combine(seed, v.baryCoords.y);
@@ -104,8 +99,8 @@ struct VertexHash {
 std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() const {
     std::unordered_map<Vertex, uint32_t, VertexHash> vertexCache;
 
-    std::vector<Vertex> vs;
-    std::vector<glm::uvec3> is;
+    std::vector<Vertex> vs(vertices.size()); //Reserved size is lower bound (needs more space than reserved).
+    std::vector<glm::uvec3> is(triangles.size()); //Reserved size is lower bound (needs more space than reserved).
 
     for(const auto& t : triangles) {
         //Base vertices
@@ -119,12 +114,19 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
             for(int i = 0; i < 3; i++) {
                 const auto& uv = t.uVertices[f[i]];
 
+                const auto bc = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, uv.position);
+
                 Vertex v {
                     .position = uv.position,
+                    .normal = bc.x * bv0.normal + bc.y * bv1.normal + bc.z * bv2.normal, //interpolated normal
                     .displacement = uv.displacement,
-                    .baseBoneIndices = {bv0.boneIndices, bv1.boneIndices, bv2.boneIndices},
-                    .baseBoneWeights = {bv0.boneWeights, bv1.boneWeights, bv2.boneWeights},
-                    .baryCoords = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, uv.position)
+                    .baseBoneIndices0 = bv0.boneIndices,
+                    .baseBoneIndices1 = bv1.boneIndices,
+                    .baseBoneIndices2 = bv2.boneIndices,
+                    .baseBoneWeights0 = bv0.boneWeights,
+                    .baseBoneWeights1 = bv1.boneWeights,
+                    .baseBoneWeights2 = bv2.boneWeights,
+                    .baryCoords = bc
                 };
 
                 if(auto iter = vertexCache.find(v); iter != vertexCache.end()) {

@@ -30,8 +30,12 @@ struct Vertex {
 	glm::vec3 displacement;
 
 	//Only applicable for micro vertices! These refer to the 3 bone indices and weights of the base vertices under which this micro vertex falls.
-	std::vector<glm::ivec4> baseBoneIndices{3};
-	std::vector<glm::vec4> baseBoneWeights{3};
+	glm::ivec4 baseBoneIndices0{0};
+	glm::ivec4 baseBoneIndices1{0};
+	glm::ivec4 baseBoneIndices2{0};
+	glm::vec4 baseBoneWeights0{0};
+	glm::vec4 baseBoneWeights1{0};
+	glm::vec4 baseBoneWeights2{0};
 	glm::vec3 baryCoords;
 
 	[[nodiscard]] bool operator==(const Vertex&) const noexcept = default;
