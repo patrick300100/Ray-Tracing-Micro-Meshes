@@ -28,6 +28,13 @@ struct Vertex {
 	glm::ivec4 boneIndices = glm::ivec4(0);
 	glm::vec4 boneWeights = glm::vec4(0.0f);
 	glm::vec3 displacement;
+
+	//Only applicable for micro vertices! These refer to the 3 bone indices and weights of the base vertices under which this micro vertex falls.
+	std::vector<glm::ivec4> baseBoneIndices{3};
+	std::vector<glm::vec4> baseBoneWeights{3};
+	glm::vec3 baryCoords;
+
+	[[nodiscard]] bool operator==(const Vertex&) const noexcept = default;
 };
 
 struct Bone {
@@ -51,4 +58,5 @@ public:
 	glm::mat4 globalTransform(float animTime, int index);
 	[[nodiscard]] float animationDuration() const;
 	[[nodiscard]] std::vector<glm::uvec3> baseTriangleIndices() const;
+	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const; //Contains base vertices + micro vertices
 };
