@@ -45,7 +45,8 @@ struct Bone {
 	TransformationChannel<glm::vec3> translation;
 	TransformationChannel<glm::quat> rotation;
 	TransformationChannel<glm::vec3> scale;
-	glm::mat4 ibm{};
+	glm::mat4 ibm{}; //Inverse bind matrix. Used to go from mesh space to bone space
+	glm::mat4 bm; //Inverse of the inverse bind matrix (so bind matrix?). Used to go back from bone space to mesh space
 
 	glm::mat4 transformationMatrix(float animTime);
 };
