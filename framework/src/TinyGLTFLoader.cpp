@@ -173,7 +173,6 @@ void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
         for(const auto& [nodeID, ibm] : std::views::zip(skin.joints, ibms)) {
             Bone b;
             b.ibm = ibm;
-            b.bm = glm::inverse(ibm);
 
             for(const auto& animation : model.animations) {
                 for(const auto& channel : animation.channels) {

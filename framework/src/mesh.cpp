@@ -16,9 +16,9 @@ std::vector<glm::mat4> Mesh::boneTransformations(const float animTime) {
 }
 
 glm::mat4 Mesh::globalTransform(const float animTime, const int index) {
-    if(parent[index] == -1) return bones[index].bm * bones[index].transformationMatrix(animTime) * bones[index].ibm;
+    if(parent[index] == -1) return bones[index].transformationMatrix(animTime) * bones[index].ibm;
 
-    return globalTransform(animTime, parent[index]) * bones[index].bm * bones[index].transformationMatrix(animTime) * bones[index].ibm;
+    return globalTransform(animTime, parent[index]) * bones[index].transformationMatrix(animTime) * bones[index].ibm;
 }
 
 float Mesh::animationDuration() const {
