@@ -42,12 +42,12 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
 
     glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
     glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
-    glVertexArrayAttribFormat(vao, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneIndices));
+    glVertexArrayAttribIFormat(vao, 2, 4, GL_INT, offsetof(Vertex, boneIndices));
     glVertexArrayAttribFormat(vao, 3, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
     glVertexArrayAttribFormat(vao, 4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
-    glVertexArrayAttribFormat(vao, 5, 4, GL_INT, GL_FALSE, offsetof(Vertex, baseBoneIndices0));
-    glVertexArrayAttribFormat(vao, 6, 4, GL_INT, GL_FALSE, offsetof(Vertex, baseBoneIndices1));
-    glVertexArrayAttribFormat(vao, 7, 4, GL_INT, GL_FALSE, offsetof(Vertex, baseBoneIndices2));
+    glVertexArrayAttribIFormat(vao, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
+    glVertexArrayAttribIFormat(vao, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
+    glVertexArrayAttribIFormat(vao, 7, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
     glVertexArrayAttribFormat(vao, 8, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights0));
     glVertexArrayAttribFormat(vao, 9, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights1));
     glVertexArrayAttribFormat(vao, 10, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights2));
