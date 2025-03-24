@@ -99,8 +99,8 @@ struct VertexHash {
 std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() const {
     std::unordered_map<Vertex, uint32_t, VertexHash> vertexCache;
 
-    std::vector<Vertex> vs(vertices.size()); //Reserved size is lower bound (needs more space than reserved).
-    std::vector<glm::uvec3> is(triangles.size()); //Reserved size is lower bound (needs more space than reserved).
+    std::vector<Vertex> vs;
+    std::vector<glm::uvec3> is;
 
     for(const auto& t : triangles) {
         //Base vertices
