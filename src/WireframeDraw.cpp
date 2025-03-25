@@ -148,7 +148,7 @@ bool WireframeDraw::contains(const glm::vec3& posA, const glm::vec3& posB) const
     return hashSet.contains(hash(posA, posB));
 }
 
-void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4> &bTs) const {
+void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4>& bTs) const {
     std::vector<WireframeVertex> newVs;
     newVs.reserve(edgeData.baseVertices.size());
 
@@ -177,7 +177,9 @@ void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4> &bTs) const {
     glDepthFunc(GL_LESS);
 }
 
-void WireframeDraw::drawMicroEdges(const std::vector<glm::mat4> &bTs) const {
+void WireframeDraw::drawMicroEdges(std::vector<glm::mat4> bTs) const {
+	for(auto& bT : bTs) bT = glm::transpose(bT); //For some reason we need to take the transpose
+
 	std::vector<WireframeVertex> newVs;
 	newVs.reserve(edgeData.microVertices.size());
 
@@ -193,11 +195,6 @@ void WireframeDraw::drawMicroEdges(const std::vector<glm::mat4> &bTs) const {
 		auto bv0SkinMatrix = bv0.boneWeights.x * bTs[bv0.boneIndices.x] + bv0.boneWeights.y * bTs[bv0.boneIndices.y] + bv0.boneWeights.z * bTs[bv0.boneIndices.z] + bv0.boneWeights.w * bTs[bv0.boneIndices.w];
 		auto bv1SkinMatrix = bv1.boneWeights.x * bTs[bv1.boneIndices.x] + bv1.boneWeights.y * bTs[bv1.boneIndices.y] + bv1.boneWeights.z * bTs[bv1.boneIndices.z] + bv1.boneWeights.w * bTs[bv1.boneIndices.w];
 		auto bv2SkinMatrix = bv2.boneWeights.x * bTs[bv2.boneIndices.x] + bv2.boneWeights.y * bTs[bv2.boneIndices.y] + bv2.boneWeights.z * bTs[bv2.boneIndices.z] + bv2.boneWeights.w * bTs[bv2.boneIndices.w];
-
-		//For some reason we need to take the transpose
-		bv0SkinMatrix = glm::transpose(bv0SkinMatrix);
-		bv1SkinMatrix = glm::transpose(bv1SkinMatrix);
-		bv2SkinMatrix = glm::transpose(bv2SkinMatrix);
 
 		const auto interpolatedSkinMatrix = baryCoords.x * bv0SkinMatrix + baryCoords.y * bv1SkinMatrix + baryCoords.z * bv2SkinMatrix;
 		const auto uvNewPos = glm::vec4(uv.position, 1.0f) * interpolatedSkinMatrix + glm::vec4(uv.displacement, 1.0f) * glm::vec4(baryCoords.x * bv0.normal + baryCoords.y * bv1.normal + baryCoords.z * bv2.normal, 0.0f) * interpolatedSkinMatrix;

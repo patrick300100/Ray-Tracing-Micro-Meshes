@@ -67,5 +67,5 @@ public:
   WireframeDraw& operator=(WireframeDraw&& other) noexcept;
 
   void drawBaseEdges(const std::vector<glm::mat4>& bTs) const;
-  void drawMicroEdges(const std::vector<glm::mat4>& bTs) const;
+  void drawMicroEdges(std::vector<glm::mat4> bTs) const;
 };

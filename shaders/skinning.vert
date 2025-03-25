@@ -40,11 +40,6 @@ void main() {
                          baseBoneWeights2.z * boneTransforms[baseBoneIndices2.z] +
                          baseBoneWeights2.w * boneTransforms[baseBoneIndices2.w];
 
-    //For some reason we need to take the transpose
-    bv0SkinMatrix = transpose(bv0SkinMatrix);
-    bv1SkinMatrix = transpose(bv1SkinMatrix);
-    bv2SkinMatrix = transpose(bv2SkinMatrix);
-
     mat4 interpolatedSkinMatrix = baryCoords.x * bv0SkinMatrix + baryCoords.y * bv1SkinMatrix + baryCoords.z * bv2SkinMatrix;
 
     vec4 newPos = vec4(position + displacementScale * displacement, 1.0f) * interpolatedSkinMatrix;

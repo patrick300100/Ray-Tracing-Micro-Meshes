@@ -125,7 +125,9 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
     return gpuMeshes;
 }
 
-void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
+void GPUMesh::draw(std::vector<glm::mat4> boneMatrices) const {
+    for(auto& bm : boneMatrices) bm = glm::transpose(bm); //For some reason we need to take the transpose
+
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
 
