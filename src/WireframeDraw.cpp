@@ -27,13 +27,41 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 
     	glVertexArrayVertexBuffer(baseVAO, 0, baseVBO, 0, sizeof(Vertex));
 
-    	glVertexArrayAttribFormat(baseVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
-    	glVertexArrayAttribBinding(baseVAO, 0, 0);
     	glEnableVertexArrayAttrib(baseVAO, 0);
-
-    	glVertexArrayAttribFormat(baseVAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
-    	glVertexArrayAttribBinding(baseVAO, 1, 0);
     	glEnableVertexArrayAttrib(baseVAO, 1);
+    	glEnableVertexArrayAttrib(baseVAO, 2);
+    	glEnableVertexArrayAttrib(baseVAO, 3);
+    	glEnableVertexArrayAttrib(baseVAO, 4);
+    	glEnableVertexArrayAttrib(baseVAO, 5);
+    	glEnableVertexArrayAttrib(baseVAO, 6);
+    	glEnableVertexArrayAttrib(baseVAO, 7);
+    	glEnableVertexArrayAttrib(baseVAO, 8);
+    	glEnableVertexArrayAttrib(baseVAO, 9);
+    	glEnableVertexArrayAttrib(baseVAO, 10);
+
+    	glVertexArrayAttribFormat(baseVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
+    	glVertexArrayAttribIFormat(baseVAO, 1, 4, GL_INT, offsetof(Vertex, boneIndices));
+    	glVertexArrayAttribFormat(baseVAO, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
+    	glVertexArrayAttribFormat(baseVAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
+    	glVertexArrayAttribIFormat(baseVAO, 4, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
+    	glVertexArrayAttribIFormat(baseVAO, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
+    	glVertexArrayAttribIFormat(baseVAO, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
+    	glVertexArrayAttribFormat(baseVAO, 7, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights0));
+    	glVertexArrayAttribFormat(baseVAO, 8, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights1));
+    	glVertexArrayAttribFormat(baseVAO, 9, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights2));
+    	glVertexArrayAttribFormat(baseVAO, 10, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, baryCoords));
+
+    	glVertexArrayAttribBinding(baseVAO, 0, 0);
+    	glVertexArrayAttribBinding(baseVAO, 1, 0);
+    	glVertexArrayAttribBinding(baseVAO, 2, 0);
+    	glVertexArrayAttribBinding(baseVAO, 3, 0);
+    	glVertexArrayAttribBinding(baseVAO, 4, 0);
+    	glVertexArrayAttribBinding(baseVAO, 5, 0);
+    	glVertexArrayAttribBinding(baseVAO, 6, 0);
+    	glVertexArrayAttribBinding(baseVAO, 7, 0);
+    	glVertexArrayAttribBinding(baseVAO, 8, 0);
+    	glVertexArrayAttribBinding(baseVAO, 9, 0);
+    	glVertexArrayAttribBinding(baseVAO, 10, 0);
     }
 
     //Add micro edges
@@ -82,13 +110,41 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 
     	glVertexArrayVertexBuffer(microVAO, 0, microVBO, 0, sizeof(Vertex));
 
-    	glVertexArrayAttribFormat(microVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
-    	glVertexArrayAttribBinding(microVAO, 0, 0);
     	glEnableVertexArrayAttrib(microVAO, 0);
-
-    	glVertexArrayAttribFormat(microVAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
-    	glVertexArrayAttribBinding(microVAO, 1, 0);
     	glEnableVertexArrayAttrib(microVAO, 1);
+    	glEnableVertexArrayAttrib(microVAO, 2);
+    	glEnableVertexArrayAttrib(microVAO, 3);
+    	glEnableVertexArrayAttrib(microVAO, 4);
+    	glEnableVertexArrayAttrib(microVAO, 5);
+    	glEnableVertexArrayAttrib(microVAO, 6);
+    	glEnableVertexArrayAttrib(microVAO, 7);
+    	glEnableVertexArrayAttrib(microVAO, 8);
+    	glEnableVertexArrayAttrib(microVAO, 9);
+    	glEnableVertexArrayAttrib(microVAO, 10);
+
+    	glVertexArrayAttribFormat(microVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
+    	glVertexArrayAttribIFormat(microVAO, 1, 4, GL_INT, offsetof(Vertex, boneIndices));
+    	glVertexArrayAttribFormat(microVAO, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
+    	glVertexArrayAttribFormat(microVAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
+    	glVertexArrayAttribIFormat(microVAO, 4, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
+    	glVertexArrayAttribIFormat(microVAO, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
+    	glVertexArrayAttribIFormat(microVAO, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
+    	glVertexArrayAttribFormat(microVAO, 7, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights0));
+    	glVertexArrayAttribFormat(microVAO, 8, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights1));
+    	glVertexArrayAttribFormat(microVAO, 9, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights2));
+    	glVertexArrayAttribFormat(microVAO, 10, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, baryCoords));
+
+    	glVertexArrayAttribBinding(microVAO, 0, 0);
+    	glVertexArrayAttribBinding(microVAO, 1, 0);
+    	glVertexArrayAttribBinding(microVAO, 2, 0);
+    	glVertexArrayAttribBinding(microVAO, 3, 0);
+    	glVertexArrayAttribBinding(microVAO, 4, 0);
+    	glVertexArrayAttribBinding(microVAO, 5, 0);
+    	glVertexArrayAttribBinding(microVAO, 6, 0);
+    	glVertexArrayAttribBinding(microVAO, 7, 0);
+    	glVertexArrayAttribBinding(microVAO, 8, 0);
+    	glVertexArrayAttribBinding(microVAO, 9, 0);
+    	glVertexArrayAttribBinding(microVAO, 10, 0);
     }
 }
 
