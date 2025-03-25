@@ -55,7 +55,7 @@ public:
 
                 if(gui.wireframe) {
                     edgesShader.bind();
-                    m.drawWireframe(bTs, mvpMatrix, gui.displace);
+                    m.drawWireframe(mvpMatrix, gui.displace);
                 }
             }
 

@@ -73,7 +73,7 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
             hashSet.insert(hash(vA.position, vB.position));
         };
 
-        for(const auto& [index, t] : std::views::enumerate(mesh.triangles)) {
+        for(const auto& t : mesh.triangles) {
 			const auto& bv0 = mesh.vertices[t.baseVertexIndices[0]];
 			const auto& bv1 = mesh.vertices[t.baseVertexIndices[1]];
 			const auto& bv2 = mesh.vertices[t.baseVertexIndices[2]];
@@ -216,23 +216,7 @@ bool WireframeDraw::contains(const glm::vec3& posA, const glm::vec3& posB) const
     return hashSet.contains(hash(posA, posB));
 }
 
-void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4>& bTs) const {
-    std::vector<Vertex> newVs;
-    newVs.reserve(edgeData.baseVertices.size());
-
-    for(auto v : edgeData.baseVertices) {
-        glm::mat4 skinMatrix = v.boneWeights.x * bTs[v.boneIndices.x] + v.boneWeights.y * bTs[v.boneIndices.y] + v.boneWeights.z * bTs[v.boneIndices.z] + v.boneWeights.w * bTs[v.boneIndices.w];
-
-        const auto skinnedPos = skinMatrix * glm::vec4(v.position, 1.0f);
-		const auto skinnedPosXYZ = glm::vec3{skinnedPos.x, skinnedPos.y, skinnedPos.z};
-
-    	v.position = skinnedPosXYZ + 0.001f * v.displacement; //Add small offset to avoid z-fighting
-
-        newVs.emplace_back(v);
-    }
-
-	glNamedBufferSubData(baseVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(Vertex)), newVs.data());
-
+void WireframeDraw::drawBaseEdges() const {
     glDepthFunc(GL_LEQUAL);
     glEnable(GL_BLEND);
     glEnable(GL_LINE_SMOOTH);
@@ -246,27 +230,7 @@ void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4>& bTs) const {
     glDepthFunc(GL_LESS);
 }
 
-void WireframeDraw::drawMicroEdges(std::vector<glm::mat4> bTs) const {
-	for(auto& bT : bTs) bT = glm::transpose(bT); //For some reason we need to take the transpose
-
-	std::vector<Vertex> newVs;
-	newVs.reserve(edgeData.microVertices.size());
-
-	for(const auto& uv : edgeData.microVertices) {
-		auto bv0SkinMatrix = uv.baseBoneWeights0.x * bTs[uv.baseBoneIndices0.x] + uv.baseBoneWeights0.y * bTs[uv.baseBoneIndices0.y] + uv.baseBoneWeights0.z * bTs[uv.baseBoneIndices0.z] + uv.baseBoneWeights0.w * bTs[uv.baseBoneIndices0.w];
-		auto bv1SkinMatrix = uv.baseBoneWeights1.x * bTs[uv.baseBoneIndices1.x] + uv.baseBoneWeights1.y * bTs[uv.baseBoneIndices1.y] + uv.baseBoneWeights1.z * bTs[uv.baseBoneIndices1.z] + uv.baseBoneWeights1.w * bTs[uv.baseBoneIndices1.w];
-		auto bv2SkinMatrix = uv.baseBoneWeights2.x * bTs[uv.baseBoneIndices2.x] + uv.baseBoneWeights2.y * bTs[uv.baseBoneIndices2.y] + uv.baseBoneWeights2.z * bTs[uv.baseBoneIndices2.z] + uv.baseBoneWeights2.w * bTs[uv.baseBoneIndices2.w];
-
-		const auto interpolatedSkinMatrix = uv.baryCoords.x * bv0SkinMatrix + uv.baryCoords.y * bv1SkinMatrix + uv.baryCoords.z * bv2SkinMatrix;
-		const auto uvNewPos = glm::vec4(uv.position, 1.0f) * interpolatedSkinMatrix;
-		const auto uvNewPosXYZ = glm::vec3{uvNewPos.x, uvNewPos.y, uvNewPos.z};
-
-		//Add small offset to avoid z-fighting
-		newVs.emplace_back(uvNewPosXYZ + 0.001f * uv.displacement, uv.displacement);
-	}
-
-	glNamedBufferSubData(microVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(Vertex)), newVs.data());
-
+void WireframeDraw::drawMicroEdges() const {
 	glDepthFunc(GL_LEQUAL);
 	glEnable(GL_BLEND);
 	glEnable(GL_LINE_SMOOTH);
