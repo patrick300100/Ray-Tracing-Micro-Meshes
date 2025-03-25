@@ -47,7 +47,7 @@ void main() {
 
     mat4 interpolatedSkinMatrix = baryCoords.x * bv0SkinMatrix + baryCoords.y * bv1SkinMatrix + baryCoords.z * bv2SkinMatrix;
 
-    vec4 newPos = vec4(position, 1.0f) * interpolatedSkinMatrix + vec4(displacementScale * displacement, 1.0f) * vec4(normal, 0.0f) * interpolatedSkinMatrix;
+    vec4 newPos = vec4(position + displacementScale * displacement, 1.0f) * interpolatedSkinMatrix;
 
     gl_Position = mvpMatrix * newPos;
     fragSurfacePos = (mvMatrix * newPos).xyz;
