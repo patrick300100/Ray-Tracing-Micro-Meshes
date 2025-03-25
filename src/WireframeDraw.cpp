@@ -8,8 +8,8 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
     //Add base edges
     {
         auto addBaseEdge = [&](const Vertex& vA, const Vertex& vB) {
-            edgeData.baseVertices.emplace_back(vA.position, vA.displacement, vA.boneIndices, vA.boneWeights);
-            edgeData.baseVertices.emplace_back(vB.position, vB.displacement, vB.boneIndices, vB.boneWeights);
+            edgeData.baseVertices.emplace_back(vA);
+            edgeData.baseVertices.emplace_back(vB);
 
             hashSet.insert(hash(vA.position, vB.position));
         };
@@ -21,17 +21,17 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
         }
 
     	glCreateBuffers(1, &baseVBO);
-    	glNamedBufferData(baseVBO, static_cast<GLsizeiptr>(edgeData.baseVertices.size() * sizeof(WireframeVertex)), edgeData.baseVertices.data(), GL_STREAM_DRAW);
+    	glNamedBufferData(baseVBO, static_cast<GLsizeiptr>(edgeData.baseVertices.size() * sizeof(Vertex)), edgeData.baseVertices.data(), GL_STREAM_DRAW);
 
     	glCreateVertexArrays(1, &baseVAO);
 
-    	glVertexArrayVertexBuffer(baseVAO, 0, baseVBO, 0, sizeof(WireframeVertex));
+    	glVertexArrayVertexBuffer(baseVAO, 0, baseVBO, 0, sizeof(Vertex));
 
-    	glVertexArrayAttribFormat(baseVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(WireframeVertex, position));
+    	glVertexArrayAttribFormat(baseVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
     	glVertexArrayAttribBinding(baseVAO, 0, 0);
     	glEnableVertexArrayAttrib(baseVAO, 0);
 
-    	glVertexArrayAttribFormat(baseVAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(WireframeVertex, displacement));
+    	glVertexArrayAttribFormat(baseVAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
     	glVertexArrayAttribBinding(baseVAO, 1, 0);
     	glEnableVertexArrayAttrib(baseVAO, 1);
     }
@@ -149,20 +149,21 @@ bool WireframeDraw::contains(const glm::vec3& posA, const glm::vec3& posB) const
 }
 
 void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4>& bTs) const {
-    std::vector<WireframeVertex> newVs;
+    std::vector<Vertex> newVs;
     newVs.reserve(edgeData.baseVertices.size());
 
-    for(const auto& v : edgeData.baseVertices) {
+    for(auto v : edgeData.baseVertices) {
         glm::mat4 skinMatrix = v.boneWeights.x * bTs[v.boneIndices.x] + v.boneWeights.y * bTs[v.boneIndices.y] + v.boneWeights.z * bTs[v.boneIndices.z] + v.boneWeights.w * bTs[v.boneIndices.w];
 
         const auto skinnedPos = skinMatrix * glm::vec4(v.position, 1.0f);
 		const auto skinnedPosXYZ = glm::vec3{skinnedPos.x, skinnedPos.y, skinnedPos.z};
 
-    	//Add small offset to avoid z-fighting
-        newVs.emplace_back(skinnedPosXYZ + 0.001f * v.displacement, v.displacement, v.boneIndices, v.boneWeights);
+    	v.position = skinnedPosXYZ + 0.001f * v.displacement; //Add small offset to avoid z-fighting
+
+        newVs.emplace_back(v);
     }
 
-	glNamedBufferSubData(baseVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(WireframeVertex)), newVs.data());
+	glNamedBufferSubData(baseVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(Vertex)), newVs.data());
 
     glDepthFunc(GL_LEQUAL);
     glEnable(GL_BLEND);

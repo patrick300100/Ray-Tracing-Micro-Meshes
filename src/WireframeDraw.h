@@ -43,7 +43,7 @@ class WireframeDraw {
   } mesh;
 
   struct {
-    std::vector<WireframeVertex> baseVertices;
+    std::vector<Vertex> baseVertices;
     std::vector<WireframeVertex> microVertices;
   } edgeData; //Each consecutive entry creates a line. So [0] and [1] create a line, [2] and [3] create a line, etc.
 
