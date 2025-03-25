@@ -118,7 +118,7 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh(read_micromesh);
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
 

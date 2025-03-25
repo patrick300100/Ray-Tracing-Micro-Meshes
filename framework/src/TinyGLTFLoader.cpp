@@ -34,7 +34,7 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFRe
     umesh = umeshReadInfo.get_subdivision_mesh();
 }
 
-std::vector<Mesh> TinyGLTFLoader::toMesh(GLTFReadInfo& umeshReadInfo) {
+std::vector<Mesh> TinyGLTFLoader::toMesh() {
     std::vector<Mesh> out;
 
     for(int i = 0; i < model.meshes.size(); i++) {
