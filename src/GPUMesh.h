@@ -33,6 +33,6 @@ public:
 
     static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath);
 
-    void draw(const std::vector<glm::mat4>& boneMatrices) const;
+    void draw(std::vector<glm::mat4> boneMatrices) const;
     void drawWireframe(const std::vector<glm::mat4>& bTs, const glm::mat4& mvp, float displacementScale) const;
 };

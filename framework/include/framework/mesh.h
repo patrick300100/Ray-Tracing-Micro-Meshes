@@ -28,13 +28,24 @@ struct Vertex {
 	glm::ivec4 boneIndices = glm::ivec4(0);
 	glm::vec4 boneWeights = glm::vec4(0.0f);
 	glm::vec3 displacement;
+
+	//Only applicable for micro vertices! These refer to the 3 bone indices and weights of the base vertices under which this micro vertex falls.
+	glm::ivec4 baseBoneIndices0{0};
+	glm::ivec4 baseBoneIndices1{0};
+	glm::ivec4 baseBoneIndices2{0};
+	glm::vec4 baseBoneWeights0{0};
+	glm::vec4 baseBoneWeights1{0};
+	glm::vec4 baseBoneWeights2{0};
+	glm::vec3 baryCoords;
+
+	[[nodiscard]] bool operator==(const Vertex&) const noexcept = default;
 };
 
 struct Bone {
 	TransformationChannel<glm::vec3> translation;
 	TransformationChannel<glm::quat> rotation;
 	TransformationChannel<glm::vec3> scale;
-	glm::mat4 ibm{};
+	glm::mat4 ibm{}; //Inverse bind matrix. Used to go from mesh space to bone space
 
 	glm::mat4 transformationMatrix(float animTime);
 };
@@ -51,4 +62,5 @@ public:
 	glm::mat4 globalTransform(float animTime, int index);
 	[[nodiscard]] float animationDuration() const;
 	[[nodiscard]] std::vector<glm::uvec3> baseTriangleIndices() const;
+	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const; //Contains base vertices + micro vertices
 };

@@ -13,12 +13,13 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
     glCreateBuffers(1, &uboBoneMatrices);
     glNamedBufferData(uboBoneMatrices, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
 
-    const auto meshIbo = cpuMesh.baseTriangleIndices();
+    const auto [vData, iData] = cpuMesh.allTriangles();
+
     glCreateBuffers(1, &ibo);
-    glNamedBufferStorage(ibo, static_cast<GLsizeiptr>(meshIbo.size() * sizeof(decltype(meshIbo)::value_type)), meshIbo.data(), 0);
+    glNamedBufferStorage(ibo, static_cast<GLsizeiptr>(iData.size() * sizeof(decltype(iData)::value_type)), iData.data(), 0);
 
     glCreateBuffers(1, &vbo);
-    glNamedBufferStorage(vbo, static_cast<GLsizeiptr>(cpuMesh.vertices.size() * sizeof(decltype(cpuMesh.vertices)::value_type)), cpuMesh.vertices.data(), 0);
+    glNamedBufferStorage(vbo, static_cast<GLsizeiptr>(vData.size() * sizeof(decltype(vData)::value_type)), vData.data(), 0);
 
     glCreateVertexArrays(1, &vao);
 
@@ -31,20 +32,41 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
     glEnableVertexArrayAttrib(vao, 2);
     glEnableVertexArrayAttrib(vao, 3);
     glEnableVertexArrayAttrib(vao, 4);
+    glEnableVertexArrayAttrib(vao, 5);
+    glEnableVertexArrayAttrib(vao, 6);
+    glEnableVertexArrayAttrib(vao, 7);
+    glEnableVertexArrayAttrib(vao, 8);
+    glEnableVertexArrayAttrib(vao, 9);
+    glEnableVertexArrayAttrib(vao, 10);
+    glEnableVertexArrayAttrib(vao, 11);
 
     glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
     glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
-    glVertexArrayAttribFormat(vao, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneIndices));
+    glVertexArrayAttribIFormat(vao, 2, 4, GL_INT, offsetof(Vertex, boneIndices));
     glVertexArrayAttribFormat(vao, 3, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
     glVertexArrayAttribFormat(vao, 4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
+    glVertexArrayAttribIFormat(vao, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
+    glVertexArrayAttribIFormat(vao, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
+    glVertexArrayAttribIFormat(vao, 7, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
+    glVertexArrayAttribFormat(vao, 8, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights0));
+    glVertexArrayAttribFormat(vao, 9, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights1));
+    glVertexArrayAttribFormat(vao, 10, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights2));
+    glVertexArrayAttribFormat(vao, 11, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, baryCoords));
 
     glVertexArrayAttribBinding(vao, 0, 0);
     glVertexArrayAttribBinding(vao, 1, 0);
     glVertexArrayAttribBinding(vao, 2, 0);
     glVertexArrayAttribBinding(vao, 3, 0);
     glVertexArrayAttribBinding(vao, 4, 0);
+    glVertexArrayAttribBinding(vao, 5, 0);
+    glVertexArrayAttribBinding(vao, 6, 0);
+    glVertexArrayAttribBinding(vao, 7, 0);
+    glVertexArrayAttribBinding(vao, 8, 0);
+    glVertexArrayAttribBinding(vao, 9, 0);
+    glVertexArrayAttribBinding(vao, 10, 0);
+    glVertexArrayAttribBinding(vao, 11, 0);
 
-    numIndices = static_cast<GLsizei>(3 * cpuMesh.triangles.size());
+    numIndices = static_cast<GLsizei>(3 * iData.size());
 }
 
 GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
@@ -96,14 +118,16 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh(read_micromesh);
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
 
     return gpuMeshes;
 }
 
-void GPUMesh::draw(const std::vector<glm::mat4>& boneMatrices) const {
+void GPUMesh::draw(std::vector<glm::mat4> boneMatrices) const {
+    for(auto& bm : boneMatrices) bm = glm::transpose(bm); //For some reason we need to take the transpose
+
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
 

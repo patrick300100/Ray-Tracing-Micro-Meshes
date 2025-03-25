@@ -45,5 +45,5 @@ class TinyGLTFLoader {
 public:
     TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo);
 
-    std::vector<Mesh> toMesh(GLTFReadInfo& umeshReadInfo);
+    std::vector<Mesh> toMesh();
 };

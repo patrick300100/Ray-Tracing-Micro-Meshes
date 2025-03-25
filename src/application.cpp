@@ -73,7 +73,7 @@ private:
 
     std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 
-    glm::mat4 projectionMatrix = glm::perspective(glm::radians(80.0f), 1.0f, 0.1f, 30.0f);
+    glm::mat4 projectionMatrix = glm::perspective(glm::radians(80.0f), 1.0f, 0.1f, 1000.0f);
     glm::mat4 modelMatrix { 1.0f };
 
     struct {
@@ -119,27 +119,34 @@ int main(const int argc, char* argv[]) {
         std::cerr << "Did not specify micro mesh file as program argument";
         return 1;
     }
+    if(argc == 3) { //User specified micro mesh path and animation path
+        const std::filesystem::path umeshPath(argv[1]);
+        const std::filesystem::path umeshAnimPath(argv[2]);
 
-    const std::filesystem::path umeshPath(argv[1]);
+        Application app(umeshPath, umeshAnimPath);
+        app.update();
+    } else {
+        const std::filesystem::path umeshPath(argv[1]);
 
-    const auto parentDir = umeshPath.parent_path();
-    const auto filenameStem = umeshPath.stem().string();
-    const auto extension = umeshPath.extension().string();
+        const auto parentDir = umeshPath.parent_path();
+        const auto filenameStem = umeshPath.stem().string();
+        const auto extension = umeshPath.extension().string();
 
-    //GLTF has 2 file extension: .gltf and .glb. We select which one is present.
-    const auto umeshAnimPathGLTF = parentDir / (filenameStem + "_anim" + ".gltf");
-    const auto umeshAnimPathGLB = parentDir / (filenameStem + "_anim" + ".glb");
+        //GLTF has 2 file extension: .gltf and .glb. We select which one is present.
+        const auto umeshAnimPathGLTF = parentDir / (filenameStem + "_anim" + ".gltf");
+        const auto umeshAnimPathGLB = parentDir / (filenameStem + "_anim" + ".glb");
 
-    std::filesystem::path umeshAnimPath;
-    if(exists(umeshAnimPathGLTF)) umeshAnimPath = umeshAnimPathGLTF;
-    else if(exists(umeshAnimPathGLB)) umeshAnimPath = umeshAnimPathGLB;
-    else {
-        std::cerr << "Could not find animation data. Remember that it has to be in the same directory.";
-        return 1;
+        std::filesystem::path umeshAnimPath;
+        if(exists(umeshAnimPathGLTF)) umeshAnimPath = umeshAnimPathGLTF;
+        else if(exists(umeshAnimPathGLB)) umeshAnimPath = umeshAnimPathGLB;
+        else {
+            std::cerr << "Could not find animation data. Remember that it has to be in the same directory.";
+            return 1;
+        }
+
+        Application app(umeshPath, umeshAnimPath);
+        app.update();
     }
-
-    Application app(umeshPath, umeshAnimPath);
-    app.update();
 
     return 0;
 }

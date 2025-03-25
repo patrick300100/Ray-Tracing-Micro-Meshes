@@ -1,6 +1,7 @@
 #include "mesh.h"
 
 #include <ranges>
+#include <unordered_map>
 
 std::vector<glm::mat4> Mesh::boneTransformations(const float animTime) {
     std::vector<glm::mat4> transformations = {};
@@ -8,16 +9,16 @@ std::vector<glm::mat4> Mesh::boneTransformations(const float animTime) {
     for(int i = 0; i < bones.size(); i++) {
         auto globalT = globalTransform(animTime, i);
 
-        transformations.push_back(globalT * bones[i].ibm);
+        transformations.push_back(globalT);
     }
 
     return transformations;
 }
 
 glm::mat4 Mesh::globalTransform(const float animTime, const int index) {
-    if(parent[index] == -1) return bones[index].transformationMatrix(animTime);
+    if(parent[index] == -1) return bones[index].transformationMatrix(animTime) * bones[index].ibm;
 
-    return globalTransform(animTime, parent[index]) * bones[index].transformationMatrix(animTime);
+    return globalTransform(animTime, parent[index]) * bones[index].transformationMatrix(animTime) * bones[index].ibm;
 }
 
 float Mesh::animationDuration() const {
@@ -30,7 +31,7 @@ std::vector<glm::uvec3> Mesh::baseTriangleIndices() const {
     return {mapped.begin(), mapped.end()};
 }
 
-std::vector<glm::vec3> Triangle::baryCoords(const glm::vec3 &A, const glm::vec3 &B, const glm::vec3 &C) const {
+std::vector<glm::vec3> Triangle::baryCoords(const glm::vec3& A, const glm::vec3 &B, const glm::vec3& C) const {
     std::vector<glm::vec3> baryCoords;
     baryCoords.reserve(uVertices.size());
 
@@ -64,4 +65,83 @@ glm::mat4 Bone::transformationMatrix(const float animTime) {
     const auto t3 = scale.getTransformation(animTime);
 
     return glm::translate(glm::mat4(1.0f), t1) * glm::mat4_cast(t2) * glm::scale(glm::mat4(1.0f), t3);
+}
+
+template <class T>
+static void hash_combine(std::size_t& seed, const T& v)
+{
+    std::hash<T> hasher;
+    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+struct VertexHash {
+    size_t operator()(const Vertex& v) const {
+        size_t seed = 0;
+        hash_combine(seed, v.position.x);
+        hash_combine(seed, v.position.y);
+        hash_combine(seed, v.position.z);
+
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices0[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices1[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices2[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights0[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights1[j]);
+        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights2[j]);
+
+        hash_combine(seed, v.baryCoords.x);
+        hash_combine(seed, v.baryCoords.y);
+        hash_combine(seed, v.baryCoords.z);
+
+        return seed;
+    }
+};
+
+std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() const {
+    std::unordered_map<Vertex, uint32_t, VertexHash> vertexCache;
+
+    std::vector<Vertex> vs;
+    std::vector<glm::uvec3> is;
+
+    for(const auto& t : triangles) {
+        //Base vertices
+        const auto& bv0 = vertices[t.baseVertexIndices[0]];
+        const auto& bv1 = vertices[t.baseVertexIndices[1]];
+        const auto& bv2 = vertices[t.baseVertexIndices[2]];
+
+        for(const auto& f : t.uFaces) {
+            glm::uvec3 triangle;
+
+            for(int i = 0; i < 3; i++) {
+                const auto& uv = t.uVertices[f[i]];
+
+                const auto bc = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, uv.position);
+
+                Vertex v {
+                    .position = uv.position,
+                    .normal = bc.x * bv0.normal + bc.y * bv1.normal + bc.z * bv2.normal, //interpolated normal
+                    .displacement = uv.displacement,
+                    .baseBoneIndices0 = bv0.boneIndices,
+                    .baseBoneIndices1 = bv1.boneIndices,
+                    .baseBoneIndices2 = bv2.boneIndices,
+                    .baseBoneWeights0 = bv0.boneWeights,
+                    .baseBoneWeights1 = bv1.boneWeights,
+                    .baseBoneWeights2 = bv2.boneWeights,
+                    .baryCoords = bc
+                };
+
+                if(auto iter = vertexCache.find(v); iter != vertexCache.end()) {
+                    // Already visited this vertex? Reuse it!
+                    triangle[i] = iter->second;
+                } else {
+                    // New vertex? Create it and store it in the vertex cache.
+                    vertexCache[v] = triangle[i] = vs.size();
+                    vs.push_back(v);
+                }
+            }
+
+            is.push_back(triangle);
+        }
+    }
+
+    return {vs, is};
 }
