@@ -38,14 +38,18 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 
     //Add micro edges
     {
-        auto addMicroEdge = [&](const uVertex& vA, const uVertex& vB, size_t index) {
-            edgeData.microVertices.emplace_back(vA.position, vA.displacement, index);
-            edgeData.microVertices.emplace_back(vB.position, vB.displacement, index);
+        auto addMicroEdge = [&](const Vertex& vA, const Vertex& vB) {
+            edgeData.microVertices.emplace_back(vA);
+            edgeData.microVertices.emplace_back(vB);
 
             hashSet.insert(hash(vA.position, vB.position));
         };
 
         for(const auto& [index, t] : std::views::enumerate(mesh.triangles)) {
+			const auto& bv0 = mesh.vertices[t.baseVertexIndices[0]];
+			const auto& bv1 = mesh.vertices[t.baseVertexIndices[1]];
+			const auto& bv2 = mesh.vertices[t.baseVertexIndices[2]];
+
             for(const auto& uf : t.uFaces) {
                 const auto& v0 = t.uVertices[uf[0]];
                 const auto& v1 = t.uVertices[uf[1]];
@@ -58,23 +62,31 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 		            const bool onBaseEdge = glm::any(glm::epsilonEqual(bary, glm::vec3(0.0f), 0.0001f)); //Edge (of micro triangle) lies on edge of base triangle
             		const bool drawnBefore = contains(vA.position, vB.position) || contains(vB.position, vA.position); //This edge has already been drawn before
 
-            		if(!onBaseEdge && !drawnBefore) addMicroEdge(vA, vB, index);
+            		if(!onBaseEdge && !drawnBefore) {
+            			const auto bc1 = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, vA.position);
+            			const auto bc2 = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, vB.position);
+
+            			addMicroEdge(
+            				Vertex{.position = vA.position, .displacement = vA.displacement, .baseBoneIndices0 = bv0.boneIndices, .baseBoneIndices1 = bv1.boneIndices, .baseBoneIndices2 = bv2.boneIndices, .baseBoneWeights0 = bv0.boneWeights, .baseBoneWeights1 = bv1.boneWeights, .baseBoneWeights2 = bv2.boneWeights, .baryCoords = bc1},
+            				Vertex{.position = vB.position, .displacement = vB.displacement, .baseBoneIndices0 = bv0.boneIndices, .baseBoneIndices1 = bv1.boneIndices, .baseBoneIndices2 = bv2.boneIndices, .baseBoneWeights0 = bv0.boneWeights, .baseBoneWeights1 = bv1.boneWeights, .baseBoneWeights2 = bv2.boneWeights, .baryCoords = bc2}
+            			);
+            		}
             	}
             }
         }
 
     	glCreateBuffers(1, &microVBO);
-    	glNamedBufferData(microVBO, static_cast<GLsizeiptr>(edgeData.microVertices.size() * sizeof(WireframeVertex)), edgeData.microVertices.data(), GL_STREAM_DRAW);
+    	glNamedBufferData(microVBO, static_cast<GLsizeiptr>(edgeData.microVertices.size() * sizeof(Vertex)), edgeData.microVertices.data(), GL_STREAM_DRAW);
 
     	glCreateVertexArrays(1, &microVAO);
 
-    	glVertexArrayVertexBuffer(microVAO, 0, microVBO, 0, sizeof(WireframeVertex));
+    	glVertexArrayVertexBuffer(microVAO, 0, microVBO, 0, sizeof(Vertex));
 
-    	glVertexArrayAttribFormat(microVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(WireframeVertex, position));
+    	glVertexArrayAttribFormat(microVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
     	glVertexArrayAttribBinding(microVAO, 0, 0);
     	glEnableVertexArrayAttrib(microVAO, 0);
 
-    	glVertexArrayAttribFormat(microVAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(WireframeVertex, displacement));
+    	glVertexArrayAttribFormat(microVAO, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
     	glVertexArrayAttribBinding(microVAO, 1, 0);
     	glEnableVertexArrayAttrib(microVAO, 1);
     }
@@ -181,31 +193,23 @@ void WireframeDraw::drawBaseEdges(const std::vector<glm::mat4>& bTs) const {
 void WireframeDraw::drawMicroEdges(std::vector<glm::mat4> bTs) const {
 	for(auto& bT : bTs) bT = glm::transpose(bT); //For some reason we need to take the transpose
 
-	std::vector<WireframeVertex> newVs;
+	std::vector<Vertex> newVs;
 	newVs.reserve(edgeData.microVertices.size());
 
 	for(const auto& uv : edgeData.microVertices) {
-		const auto& t = mesh.triangles[uv.baseTriangleIndex];
+		auto bv0SkinMatrix = uv.baseBoneWeights0.x * bTs[uv.baseBoneIndices0.x] + uv.baseBoneWeights0.y * bTs[uv.baseBoneIndices0.y] + uv.baseBoneWeights0.z * bTs[uv.baseBoneIndices0.z] + uv.baseBoneWeights0.w * bTs[uv.baseBoneIndices0.w];
+		auto bv1SkinMatrix = uv.baseBoneWeights1.x * bTs[uv.baseBoneIndices1.x] + uv.baseBoneWeights1.y * bTs[uv.baseBoneIndices1.y] + uv.baseBoneWeights1.z * bTs[uv.baseBoneIndices1.z] + uv.baseBoneWeights1.w * bTs[uv.baseBoneIndices1.w];
+		auto bv2SkinMatrix = uv.baseBoneWeights2.x * bTs[uv.baseBoneIndices2.x] + uv.baseBoneWeights2.y * bTs[uv.baseBoneIndices2.y] + uv.baseBoneWeights2.z * bTs[uv.baseBoneIndices2.z] + uv.baseBoneWeights2.w * bTs[uv.baseBoneIndices2.w];
 
-		const auto bv0 = mesh.vertices[t.baseVertexIndices[0]];
-		const auto bv1 = mesh.vertices[t.baseVertexIndices[1]];
-		const auto bv2 = mesh.vertices[t.baseVertexIndices[2]];
-
-		auto baryCoords = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, uv.position);
-
-		auto bv0SkinMatrix = bv0.boneWeights.x * bTs[bv0.boneIndices.x] + bv0.boneWeights.y * bTs[bv0.boneIndices.y] + bv0.boneWeights.z * bTs[bv0.boneIndices.z] + bv0.boneWeights.w * bTs[bv0.boneIndices.w];
-		auto bv1SkinMatrix = bv1.boneWeights.x * bTs[bv1.boneIndices.x] + bv1.boneWeights.y * bTs[bv1.boneIndices.y] + bv1.boneWeights.z * bTs[bv1.boneIndices.z] + bv1.boneWeights.w * bTs[bv1.boneIndices.w];
-		auto bv2SkinMatrix = bv2.boneWeights.x * bTs[bv2.boneIndices.x] + bv2.boneWeights.y * bTs[bv2.boneIndices.y] + bv2.boneWeights.z * bTs[bv2.boneIndices.z] + bv2.boneWeights.w * bTs[bv2.boneIndices.w];
-
-		const auto interpolatedSkinMatrix = baryCoords.x * bv0SkinMatrix + baryCoords.y * bv1SkinMatrix + baryCoords.z * bv2SkinMatrix;
-		const auto uvNewPos = glm::vec4(uv.position, 1.0f) * interpolatedSkinMatrix + glm::vec4(uv.displacement, 1.0f) * glm::vec4(baryCoords.x * bv0.normal + baryCoords.y * bv1.normal + baryCoords.z * bv2.normal, 0.0f) * interpolatedSkinMatrix;
+		const auto interpolatedSkinMatrix = uv.baryCoords.x * bv0SkinMatrix + uv.baryCoords.y * bv1SkinMatrix + uv.baryCoords.z * bv2SkinMatrix;
+		const auto uvNewPos = glm::vec4(uv.position, 1.0f) * interpolatedSkinMatrix;
 		const auto uvNewPosXYZ = glm::vec3{uvNewPos.x, uvNewPos.y, uvNewPos.z};
 
 		//Add small offset to avoid z-fighting
-		newVs.emplace_back(uvNewPosXYZ + 0.001f * uv.displacement, uv.displacement, uv.baseTriangleIndex);
+		newVs.emplace_back(uvNewPosXYZ + 0.001f * uv.displacement, uv.displacement);
 	}
 
-	glNamedBufferSubData(microVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(WireframeVertex)), newVs.data());
+	glNamedBufferSubData(microVBO, 0, static_cast<GLsizeiptr>(newVs.size() * sizeof(Vertex)), newVs.data());
 
 	glDepthFunc(GL_LEQUAL);
 	glEnable(GL_BLEND);

@@ -5,27 +5,6 @@
 #include <framework/MeshIterator.h>
 #include <framework/opengl_includes.h>
 
-struct WireframeVertex {
-  glm::vec3 position;
-  glm::vec3 displacement;
-  glm::ivec4 boneIndices;
-  glm::vec4 boneWeights;
-  size_t baseTriangleIndex;
-
-  WireframeVertex(const glm::vec3& p, const glm::vec3& d, const glm::ivec4& bi, const glm::vec4& bw) {
-    position = p;
-    displacement = d;
-    boneIndices = bi;
-    boneWeights = bw;
-  }
-
-  WireframeVertex(const glm::vec3& p, const glm::vec3& d, const size_t bti) {
-    position = p;
-    displacement = d;
-    baseTriangleIndex = bti;
-  }
-};
-
 class WireframeDraw {
   std::unordered_set<size_t> hashSet;
 
@@ -44,7 +23,7 @@ class WireframeDraw {
 
   struct {
     std::vector<Vertex> baseVertices;
-    std::vector<WireframeVertex> microVertices;
+    std::vector<Vertex> microVertices;
   } edgeData; //Each consecutive entry creates a line. So [0] and [1] create a line, [2] and [3] create a line, etc.
 
   //Buffers
