@@ -51,5 +51,5 @@ void main() {
 
     gl_Position = mvpMatrix * newPos;
     fragSurfacePos = (mvMatrix * newPos).xyz;
-    fragNormal = normal;
+    fragNormal = transpose(inverse(mat3(interpolatedSkinMatrix))) * normal;
 }
