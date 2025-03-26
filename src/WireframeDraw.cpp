@@ -28,35 +28,50 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 		const auto& bv2 = mesh.vertices[t.baseVertexIndices[2]];
 
 		for(const auto& uf : t.uFaces) {
-			const auto& v0 = t.uVertices[uf[0]];
-			const auto& v1 = t.uVertices[uf[1]];
-			const auto& v2 = t.uVertices[uf[2]];
+			const auto& uv0 = t.uVertices[uf[0]];
+			const auto& uv1 = t.uVertices[uf[1]];
+			const auto& uv2 = t.uVertices[uf[2]];
 
-			for(const auto& [vA, vB] : std::vector<std::pair<uVertex, uVertex>>{{v0, v1}, {v1, v2}, {v0, v2}}) {
-				//Barycentric coordinate of position in the center of the edge
-				const auto bary = Triangle::computeBaryCoords(mesh.vertices[t.baseVertexIndices[0]].position, mesh.vertices[t.baseVertexIndices[1]].position, mesh.vertices[t.baseVertexIndices[2]].position, (vA.position + vB.position) / 2.0f);
+			//Loop over each edge of the (micro) triangle
+			for(const auto& [uvA, uvB] : std::vector<std::pair<uVertex, uVertex>>{{uv0, uv1}, {uv1, uv2}, {uv0, uv2}}) {
+				//Barycentric coordinate of position in the middle of the edge
+				const auto baryMiddle = Triangle::computeBaryCoords(
+					mesh.vertices[t.baseVertexIndices[0]].position,
+					mesh.vertices[t.baseVertexIndices[1]].position,
+					mesh.vertices[t.baseVertexIndices[2]].position,
+					(uvA.position + uvB.position) / 2.0f
+				);
 
-				const bool onBaseEdge = glm::any(glm::epsilonEqual(bary, glm::vec3(0.0f), 0.0001f)); //Edge (of micro triangle) lies on edge of base triangle
-				const bool drawnBefore = contains(vA.position, vB.position) || contains(vB.position, vA.position); //This edge has already been drawn before
+				const bool onBaseEdge = glm::any(glm::epsilonEqual(baryMiddle, glm::vec3(0.0f), 0.0001f)); //Edge (of micro triangle) lies on edge of base triangle
+				const bool drawnBefore = contains(uvA.position, uvB.position) || contains(uvB.position, uvA.position); //This edge has already been drawn before
+
+				const auto vA = Vertex {
+					.position = uvA.position,
+					.displacement = uvA.displacement,
+					.baseBoneIndices0 = bv0.boneIndices,
+					.baseBoneIndices1 = bv1.boneIndices,
+					.baseBoneIndices2 = bv2.boneIndices,
+					.baseBoneWeights0 = bv0.boneWeights,
+					.baseBoneWeights1 = bv1.boneWeights,
+					.baseBoneWeights2 = bv2.boneWeights,
+					.baryCoords = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, uvA.position)
+				};
+
+				const auto vB = Vertex {
+					.position = uvB.position,
+					.displacement = uvB.displacement,
+					.baseBoneIndices0 = bv0.boneIndices,
+					.baseBoneIndices1 = bv1.boneIndices,
+					.baseBoneIndices2 = bv2.boneIndices,
+					.baseBoneWeights0 = bv0.boneWeights,
+					.baseBoneWeights1 = bv1.boneWeights,
+					.baseBoneWeights2 = bv2.boneWeights,
+					.baryCoords = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, uvB.position)
+				};
 
 				if(!drawnBefore) {
-					if(onBaseEdge) {
-						const auto bc1 = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, vA.position);
-						const auto bc2 = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, vB.position);
-
-						addBaseEdge(
-							Vertex{.position = vA.position, .displacement = vA.displacement, .baseBoneIndices0 = bv0.boneIndices, .baseBoneIndices1 = bv1.boneIndices, .baseBoneIndices2 = bv2.boneIndices, .baseBoneWeights0 = bv0.boneWeights, .baseBoneWeights1 = bv1.boneWeights, .baseBoneWeights2 = bv2.boneWeights, .baryCoords = bc1},
-							Vertex{.position = vB.position, .displacement = vB.displacement, .baseBoneIndices0 = bv0.boneIndices, .baseBoneIndices1 = bv1.boneIndices, .baseBoneIndices2 = bv2.boneIndices, .baseBoneWeights0 = bv0.boneWeights, .baseBoneWeights1 = bv1.boneWeights, .baseBoneWeights2 = bv2.boneWeights, .baryCoords = bc2}
-						);
-					} else {
-						const auto bc1 = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, vA.position);
-						const auto bc2 = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, vB.position);
-
-						addMicroEdge(
-							Vertex{.position = vA.position, .displacement = vA.displacement, .baseBoneIndices0 = bv0.boneIndices, .baseBoneIndices1 = bv1.boneIndices, .baseBoneIndices2 = bv2.boneIndices, .baseBoneWeights0 = bv0.boneWeights, .baseBoneWeights1 = bv1.boneWeights, .baseBoneWeights2 = bv2.boneWeights, .baryCoords = bc1},
-							Vertex{.position = vB.position, .displacement = vB.displacement, .baseBoneIndices0 = bv0.boneIndices, .baseBoneIndices1 = bv1.boneIndices, .baseBoneIndices2 = bv2.boneIndices, .baseBoneWeights0 = bv0.boneWeights, .baseBoneWeights1 = bv1.boneWeights, .baseBoneWeights2 = bv2.boneWeights, .baryCoords = bc2}
-						);
-					}
+					if(onBaseEdge) addBaseEdge(vA, vB);
+					else addMicroEdge(vA, vB);
 				}
 			}
 		}
