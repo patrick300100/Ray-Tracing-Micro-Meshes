@@ -36,7 +36,11 @@ public:
 
             menu();
 
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            //Needed for correct colors of wireframe
+            glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
+            glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR, GL_DST_COLOR);
+
+            glClearColor(0.29f, 0.29f, 0.29f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
 

@@ -37,7 +37,8 @@ void main(void) {
 
     mat4 skinMatrix = baryCoords.x * bv0SkinMatrix + baryCoords.y * bv1SkinMatrix + baryCoords.z * bv2SkinMatrix;
 
-    vec4 skinnedPos = vec4(position + displacementScale * displacement, 1.0f) * skinMatrix;
+    vec3 skinnedPos = (vec4(position + displacementScale * displacement, 1.0f) * skinMatrix).xyz;
+    skinnedPos += 0.001f * displacement; //Add tiny displacement to avoid z-fighting with mesh
 
-    gl_Position = mvp * skinnedPos;
+    gl_Position = mvp * vec4(skinnedPos, 1.0f);
 }
