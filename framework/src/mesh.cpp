@@ -1,4 +1,5 @@
 #include "mesh.h"
+#include "VertexHash.h"
 
 #include <ranges>
 #include <unordered_map>
@@ -31,7 +32,7 @@ std::vector<glm::uvec3> Mesh::baseTriangleIndices() const {
     return {mapped.begin(), mapped.end()};
 }
 
-std::vector<glm::vec3> Triangle::baryCoords(const glm::vec3& A, const glm::vec3 &B, const glm::vec3& C) const {
+std::vector<glm::vec3> Triangle::baryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C) const {
     std::vector<glm::vec3> baryCoords;
     baryCoords.reserve(uVertices.size());
 
@@ -42,7 +43,7 @@ std::vector<glm::vec3> Triangle::baryCoords(const glm::vec3& A, const glm::vec3 
     return baryCoords;
 }
 
-glm::vec3 Triangle::computeBaryCoords(const glm::vec3 &A, const glm::vec3 &B, const glm::vec3 &C, const glm::vec3 &pos) {
+glm::vec3 Triangle::computeBaryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C, const glm::vec3& pos) {
     const glm::vec3 v0 = B - A, v1 = C - A, v2 = pos - A;
 
     const float d00 = glm::dot(v0, v0);
@@ -66,35 +67,6 @@ glm::mat4 Bone::transformationMatrix(const float animTime) {
 
     return glm::translate(glm::mat4(1.0f), t1) * glm::mat4_cast(t2) * glm::scale(glm::mat4(1.0f), t3);
 }
-
-template <class T>
-static void hash_combine(std::size_t& seed, const T& v)
-{
-    std::hash<T> hasher;
-    seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
-
-struct VertexHash {
-    size_t operator()(const Vertex& v) const {
-        size_t seed = 0;
-        hash_combine(seed, v.position.x);
-        hash_combine(seed, v.position.y);
-        hash_combine(seed, v.position.z);
-
-        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices0[j]);
-        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices1[j]);
-        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices2[j]);
-        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights0[j]);
-        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights1[j]);
-        for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights2[j]);
-
-        hash_combine(seed, v.baryCoords.x);
-        hash_combine(seed, v.baryCoords.y);
-        hash_combine(seed, v.baryCoords.z);
-
-        return seed;
-    }
-};
 
 std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() const {
     std::unordered_map<Vertex, uint32_t, VertexHash> vertexCache;
