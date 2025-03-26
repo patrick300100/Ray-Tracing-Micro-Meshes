@@ -50,7 +50,7 @@ public:
                 glUniform1f(2, gui.displace);
                 glUniform3fv(3, 1, glm::value_ptr(trackball->position()));
 
-                auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
+                const auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
                 m.draw(bTs);
 
                 if(gui.wireframe) {

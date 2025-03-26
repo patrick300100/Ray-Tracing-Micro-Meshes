@@ -126,8 +126,6 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
 }
 
 void GPUMesh::draw(std::vector<glm::mat4> boneMatrices) const {
-    for(auto& bm : boneMatrices) bm = glm::transpose(bm); //For some reason we need to take the transpose
-
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
 
@@ -151,12 +149,10 @@ void GPUMesh::drawWireframe(const glm::mat4& mvp, const float displacementScale)
     glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvp));
     glUniform1f(1, displacementScale);
     glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.235f, 0.235f, 0.235f, 1.0f)));
-    glUniform1i(3, GL_TRUE);
 
     wfDraw.drawBaseEdges();
 
     glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.435f, 0.435f, 0.435f, 0.5f)));
-    glUniform1i(3, GL_FALSE);
 
     wfDraw.drawMicroEdges();
 }

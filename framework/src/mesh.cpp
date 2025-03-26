@@ -9,7 +9,7 @@ std::vector<glm::mat4> Mesh::boneTransformations(const float animTime) {
     for(int i = 0; i < bones.size(); i++) {
         auto globalT = globalTransform(animTime, i);
 
-        transformations.push_back(globalT);
+        transformations.push_back(glm::transpose(globalT)); //For some reason we need to take the transpose
     }
 
     return transformations;
