@@ -36,7 +36,11 @@ public:
 
             menu();
 
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            //Needed for correct colors of wireframe
+            glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
+            glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR, GL_DST_COLOR);
+
+            glClearColor(0.29f, 0.29f, 0.29f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             glEnable(GL_DEPTH_TEST);
 
@@ -50,12 +54,12 @@ public:
                 glUniform1f(2, gui.displace);
                 glUniform3fv(3, 1, glm::value_ptr(trackball->position()));
 
-                auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
+                const auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
                 m.draw(bTs);
 
                 if(gui.wireframe) {
                     edgesShader.bind();
-                    m.drawWireframe(bTs, mvpMatrix, gui.displace);
+                    m.drawWireframe(mvpMatrix, gui.displace);
                 }
             }
 
