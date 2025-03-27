@@ -1,31 +1,69 @@
 #include "WireframeDraw.h"
 
 #include <iostream>
+#include <sstream>
+#include <unordered_map>
 DISABLE_WARNINGS_PUSH()
 #include <glad/glad.h>
 DISABLE_WARNINGS_POP()
 #include <ranges>
 
-WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.vertices, m.triangles} {
-	auto addBaseEdge = [&](const Vertex& vA, const Vertex& vB) {
-		edgeData.baseVertices.emplace_back(vA);
-		edgeData.baseVertices.emplace_back(vB);
+struct VertexHash {
+	size_t operator()(const Vertex& v) const {
+		size_t seed = 0;
+		hash_combine(seed, v.position.x);
+		hash_combine(seed, v.position.y);
+		hash_combine(seed, v.position.z);
 
-		hashSet.insert(hash(vA.position, vB.position));
+		for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices0[j]);
+		for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices1[j]);
+		for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneIndices2[j]);
+		for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights0[j]);
+		for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights1[j]);
+		for(int j = 0; j < 4; j++) hash_combine(seed, v.baseBoneWeights2[j]);
+
+		hash_combine(seed, v.baryCoords.x);
+		hash_combine(seed, v.baryCoords.y);
+		hash_combine(seed, v.baryCoords.z);
+
+		return seed;
+	}
+
+private:
+	template <class T>
+	static void hash_combine(std::size_t& seed, const T& v) {
+		std::hash<T> hasher;
+		seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+	}
+};
+
+WireframeDraw::WireframeDraw(const Mesh& m) {
+	//Create data structures for creating VBO's and IBO's
+	std::unordered_map<Vertex, uint32_t, VertexHash> vertexCache(2 * m.vertices.size());
+	std::unordered_set<size_t> edgeCache(3 * m.vertices.size());
+
+	std::vector<uint32_t> baseIndices;
+	std::vector<uint32_t> microIndices;
+
+	std::vector<Vertex> vs;
+
+	auto addIndex = [&](std::vector<uint32_t>& indexList, const Vertex& v) {
+		if (auto iter = vertexCache.find(v); iter != vertexCache.end()) {
+			//Already visited this vertex? Reuse it!
+			indexList.emplace_back(iter->second);
+		} else {
+			//New vertex? Create it and store it in the vertex cache.
+			vertexCache[v] = vs.size();
+			indexList.emplace_back(vs.size());
+
+			vs.emplace_back(v);
+		}
 	};
 
-	auto addMicroEdge = [&](const Vertex& vA, const Vertex& vB) {
-		edgeData.microVertices.emplace_back(vA);
-		edgeData.microVertices.emplace_back(vB);
-
-		hashSet.insert(hash(vA.position, vB.position));
-	};
-
-
-	for(const auto& t : mesh.triangles) {
-		const auto& bv0 = mesh.vertices[t.baseVertexIndices[0]];
-		const auto& bv1 = mesh.vertices[t.baseVertexIndices[1]];
-		const auto& bv2 = mesh.vertices[t.baseVertexIndices[2]];
+	for(const auto& t : m.triangles) {
+		const auto& bv0 = m.vertices[t.baseVertexIndices[0]];
+		const auto& bv1 = m.vertices[t.baseVertexIndices[1]];
+		const auto& bv2 = m.vertices[t.baseVertexIndices[2]];
 
 		for(const auto& uf : t.uFaces) {
 			const auto& uv0 = t.uVertices[uf[0]];
@@ -36,55 +74,58 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 			for(const auto& [uvA, uvB] : std::vector<std::pair<uVertex, uVertex>>{{uv0, uv1}, {uv1, uv2}, {uv0, uv2}}) {
 				//Barycentric coordinate of position in the middle of the edge
 				const auto baryMiddle = Triangle::computeBaryCoords(
-					mesh.vertices[t.baseVertexIndices[0]].position,
-					mesh.vertices[t.baseVertexIndices[1]].position,
-					mesh.vertices[t.baseVertexIndices[2]].position,
+					m.vertices[t.baseVertexIndices[0]].position,
+					m.vertices[t.baseVertexIndices[1]].position,
+					m.vertices[t.baseVertexIndices[2]].position,
 					(uvA.position + uvB.position) / 2.0f
 				);
 
 				const bool onBaseEdge = glm::any(glm::epsilonEqual(baryMiddle, glm::vec3(0.0f), 0.0001f)); //Edge (of micro triangle) lies on edge of base triangle
-				const bool drawnBefore = contains(uvA.position, uvB.position) || contains(uvB.position, uvA.position); //This edge has already been drawn before
+				const bool drawnBefore = edgeCache.contains(hash(uvA.position, uvB.position)) || edgeCache.contains(hash(uvB.position, uvA.position)); //This edge has already been drawn before
 
-				const auto vA = Vertex {
-					.position = uvA.position,
-					.displacement = uvA.displacement,
-					.baseBoneIndices0 = bv0.boneIndices,
-					.baseBoneIndices1 = bv1.boneIndices,
-					.baseBoneIndices2 = bv2.boneIndices,
-					.baseBoneWeights0 = bv0.boneWeights,
-					.baseBoneWeights1 = bv1.boneWeights,
-					.baseBoneWeights2 = bv2.boneWeights,
-					.baryCoords = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, uvA.position)
-				};
+				const auto hashValue = hash(uvA.position, uvB.position);
 
-				const auto vB = Vertex {
-					.position = uvB.position,
-					.displacement = uvB.displacement,
-					.baseBoneIndices0 = bv0.boneIndices,
-					.baseBoneIndices1 = bv1.boneIndices,
-					.baseBoneIndices2 = bv2.boneIndices,
-					.baseBoneWeights0 = bv0.boneWeights,
-					.baseBoneWeights1 = bv1.boneWeights,
-					.baseBoneWeights2 = bv2.boneWeights,
-					.baryCoords = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, uvB.position)
-				};
+				for(const auto& uv : {uvA, uvB}) {
+					const auto v = Vertex {
+						.position = uv.position,
+						.displacement = uv.displacement,
+						.baseBoneIndices0 = bv0.boneIndices,
+						.baseBoneIndices1 = bv1.boneIndices,
+						.baseBoneIndices2 = bv2.boneIndices,
+						.baseBoneWeights0 = bv0.boneWeights,
+						.baseBoneWeights1 = bv1.boneWeights,
+						.baseBoneWeights2 = bv2.boneWeights,
+						.baryCoords = Triangle::computeBaryCoords(bv0.position, bv1.position, bv2.position, uv.position)
+					};
 
-				if(!drawnBefore) {
-					if(onBaseEdge) addBaseEdge(vA, vB);
-					else addMicroEdge(vA, vB);
+					if(!drawnBefore) {
+						if(onBaseEdge) {
+							edgeCache.insert(hashValue);
+							addIndex(baseIndices, v);
+						}
+						else {
+							edgeCache.insert(hashValue);
+							addIndex(microIndices, v);
+						}
+					}
 				}
 			}
 		}
 	}
 
+	glCreateBuffers(1, &vbo);
+	glNamedBufferData(vbo, static_cast<GLsizeiptr>(vs.size() * sizeof(Vertex)), vs.data(), GL_STATIC_DRAW);
+
 	//Create buffers for base edges
 	{
-		glCreateBuffers(1, &baseVBO);
-		glNamedBufferData(baseVBO, static_cast<GLsizeiptr>(edgeData.baseVertices.size() * sizeof(Vertex)), edgeData.baseVertices.data(), GL_STREAM_DRAW);
+		glCreateBuffers(1, &baseIBO);
+		glNamedBufferStorage(baseIBO, static_cast<GLsizeiptr>(baseIndices.size() * sizeof(decltype(baseIndices)::value_type)), baseIndices.data(), 0);
 
 		glCreateVertexArrays(1, &baseVAO);
 
-		glVertexArrayVertexBuffer(baseVAO, 0, baseVBO, 0, sizeof(Vertex));
+		glVertexArrayElementBuffer(baseVAO, baseIBO);
+
+		glVertexArrayVertexBuffer(baseVAO, 0, vbo, 0, sizeof(Vertex));
 
 		glEnableVertexArrayAttrib(baseVAO, 0);
 		glEnableVertexArrayAttrib(baseVAO, 1);
@@ -121,16 +162,20 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 		glVertexArrayAttribBinding(baseVAO, 8, 0);
 		glVertexArrayAttribBinding(baseVAO, 9, 0);
 		glVertexArrayAttribBinding(baseVAO, 10, 0);
+
+		baseNumIndices = static_cast<GLsizei>(baseIndices.size());
 	}
 
 	//Create buffers for micro edges
 	{
-		glCreateBuffers(1, &microVBO);
-		glNamedBufferData(microVBO, static_cast<GLsizeiptr>(edgeData.microVertices.size() * sizeof(Vertex)), edgeData.microVertices.data(), GL_STREAM_DRAW);
+		glCreateBuffers(1, &microIBO);
+		glNamedBufferStorage(microIBO, static_cast<GLsizeiptr>(microIndices.size() * sizeof(decltype(microIndices)::value_type)), microIndices.data(), 0);
 
 		glCreateVertexArrays(1, &microVAO);
 
-		glVertexArrayVertexBuffer(microVAO, 0, microVBO, 0, sizeof(Vertex));
+		glVertexArrayElementBuffer(microVAO, microIBO);
+
+		glVertexArrayVertexBuffer(microVAO, 0, vbo, 0, sizeof(Vertex));
 
 		glEnableVertexArrayAttrib(microVAO, 0);
 		glEnableVertexArrayAttrib(microVAO, 1);
@@ -167,6 +212,8 @@ WireframeDraw::WireframeDraw(const Mesh& m): hashSet(m.vertices.size()), mesh{m.
 		glVertexArrayAttribBinding(microVAO, 8, 0);
 		glVertexArrayAttribBinding(microVAO, 9, 0);
 		glVertexArrayAttribBinding(microVAO, 10, 0);
+
+		microNumIndices = static_cast<GLsizei>(microIndices.size());
 	}
 }
 
@@ -175,32 +222,38 @@ WireframeDraw::~WireframeDraw() {
 }
 
 WireframeDraw::WireframeDraw(WireframeDraw&& other) noexcept:
-	hashSet(std::move(other.hashSet)),
-	mesh(std::move(other.mesh)),
-	edgeData(std::move(other.edgeData)),
-	baseVBO(other.baseVBO),
+	vbo(other.vbo),
 	baseVAO(other.baseVAO),
-	microVBO(other.microVBO),
-	microVAO(other.microVAO)
+	baseIBO(other.baseIBO),
+	baseNumIndices(other.baseNumIndices),
+	microVAO(other.microVAO),
+	microIBO(other.microIBO),
+	microNumIndices(other.microNumIndices)
 {
-	other.baseVBO = 0;
+	other.vbo = 0;
 	other.baseVAO = 0;
-	other.microVBO = 0;
+	other.baseIBO = 0;
+	other.baseNumIndices = 0;
 	other.microVAO = 0;
+	other.microIBO = 0;
+	other.microNumIndices = 0;
 }
 
 WireframeDraw& WireframeDraw::operator=(WireframeDraw&& other) noexcept {
 	if(this != &other) {
 		freeGpuMemory();
 
-		hashSet = std::move(other.hashSet);
-		mesh = std::move(other.mesh);
-		edgeData = std::move(other.edgeData);
-
-		std::swap(baseVBO, other.baseVBO);
+		std::swap(vbo, other.vbo);
 		std::swap(baseVAO, other.baseVAO);
-		std::swap(microVBO, other.microVBO);
+		std::swap(baseIBO, other.baseIBO);
 		std::swap(microVAO, other.microVAO);
+		std::swap(microIBO, other.microIBO);
+
+		baseNumIndices = other.baseNumIndices;
+		microNumIndices = other.microNumIndices;
+
+		other.baseNumIndices = 0;
+		other.microNumIndices = 0;
 	}
 
 	return *this;
@@ -209,13 +262,15 @@ WireframeDraw& WireframeDraw::operator=(WireframeDraw&& other) noexcept {
 void WireframeDraw::freeGpuMemory() {
 	glDeleteVertexArrays(1, &baseVAO);
 	glDeleteVertexArrays(1, &microVAO);
-	glDeleteBuffers(1, &baseVBO);
-	glDeleteBuffers(1, &microVBO);
+	glDeleteBuffers(1, &vbo);
+	glDeleteBuffers(1, &baseIBO);
+	glDeleteBuffers(1, &microIBO);
 
 	baseVAO = 0;
 	microVAO = 0;
-	baseVBO = 0;
-	microVBO = 0;
+	vbo = 0;
+	baseIBO = 0;
+	microIBO = 0;
 }
 
 void WireframeDraw::hash_combine(size_t& seed, const float& v) {
@@ -234,10 +289,6 @@ size_t WireframeDraw::hash(const glm::vec3& posA, const glm::vec3& posB) {
     return seed;
 }
 
-bool WireframeDraw::contains(const glm::vec3& posA, const glm::vec3& posB) const {
-    return hashSet.contains(hash(posA, posB));
-}
-
 void WireframeDraw::drawBaseEdges() const {
     glDepthFunc(GL_LEQUAL);
     glEnable(GL_BLEND);
@@ -245,7 +296,7 @@ void WireframeDraw::drawBaseEdges() const {
 
     glLineWidth(1.0f);
     glBindVertexArray(baseVAO);
-    glDrawArrays(GL_LINES, 0, edgeData.baseVertices.size());
+	glDrawElements(GL_LINES, baseNumIndices, GL_UNSIGNED_INT, nullptr);
 
     glDisable(GL_LINE_SMOOTH);
     glDisable(GL_BLEND);
@@ -259,7 +310,7 @@ void WireframeDraw::drawMicroEdges() const {
 
 	glLineWidth(0.5f);
 	glBindVertexArray(microVAO);
-	glDrawArrays(GL_LINES, 0, edgeData.microVertices.size());
+	glDrawElements(GL_LINES, microNumIndices, GL_UNSIGNED_INT, nullptr);
 
 	glDisable(GL_LINE_SMOOTH);
 	glDisable(GL_BLEND);

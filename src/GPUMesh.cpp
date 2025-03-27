@@ -96,11 +96,13 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
         wfDraw = std::move(other.wfDraw);
         cpuMesh = std::move(other.cpuMesh);
 
-        std::swap(numIndices, other.numIndices);
         std::swap(ibo, other.ibo);
         std::swap(vbo, other.vbo);
         std::swap(vao, other.vao);
         std::swap(uboBoneMatrices, other.uboBoneMatrices);
+
+        numIndices = other.numIndices;
+        other.numIndices = 0;
     }
 
     return *this;
