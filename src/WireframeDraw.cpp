@@ -38,7 +38,7 @@ private:
 };
 
 WireframeDraw::WireframeDraw(const Mesh& m) {
-	//Create data structures for creating VBO's and IBO's
+	//Create data structures and (lambda) function for creating VBO's and IBO's
 	std::unordered_map<Vertex, uint32_t, VertexHash> vertexCache(2 * m.vertices.size());
 	std::unordered_set<size_t> edgeCache(3 * m.vertices.size());
 
