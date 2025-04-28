@@ -3,6 +3,11 @@ project(ComputerGraphics C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
+# Only compile on Windows
+if(NOT WIN32)
+	message(FATAL_ERROR "This project requires Windows (DirectX 12)")
+endif()
+
 add_subdirectory("framework")
 
 add_executable(Micro_Meshes
@@ -12,7 +17,7 @@ add_executable(Micro_Meshes
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
-target_link_libraries(Micro_Meshes PRIVATE CGFramework)
+target_link_libraries(Micro_Meshes PRIVATE CGFramework d3d12 dxgi d3dcompiler)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 
