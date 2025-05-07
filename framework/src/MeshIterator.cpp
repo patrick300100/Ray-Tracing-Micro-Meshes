@@ -1,5 +1,6 @@
 #include "MeshIterator.h"
 
+#include <array>
 #include <span>
 
 MeshIterator::MeshIterator(const std::vector<Vertex>& v, const std::vector<Triangle>& t, const size_t index): vertices(v), triangles(t), triangleIndex(index) {}

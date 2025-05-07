@@ -1,246 +1,211 @@
 #include "window.h"
 #include <imgui/imgui.h>
-#include <imgui/imgui_impl_glfw.h>
-#include <imgui/imgui_impl_opengl2.h>
 #undef IMGUI_IMPL_OPENGL_LOADER_GLEW
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD 1
-#include <imgui/imgui_impl_opengl3.h>
-#include <iostream>
+#include <imgui/imgui_impl_win32.h>
+#include <imgui/imgui_impl_dx12.h>
+#include <d3d12.h>
+#include <dxgi1_4.h>
+#include <windowsx.h>
+#include <glm/vec2.hpp>
 #include <stb/stb_image_write.h>
 
-static void glfwErrorCallback(int error, const char* description)
-{
-    std::cerr << "GLFW error code: " << error << std::endl;
-    std::cerr << description << std::endl;
-    exit(1);
+#ifdef _DEBUG
+#define DX12_ENABLE_DEBUG_LAYER
+#endif
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+#include <dxgidebug.h>
+#pragma comment(lib, "dxguid.lib")
+#endif
+
+// Config for example app
+static constexpr int APP_NUM_FRAMES_IN_FLIGHT = 2;
+static constexpr int APP_NUM_BACK_BUFFERS = 2;
+static constexpr int APP_SRV_HEAP_SIZE = 64;
+
+// Simple free list based allocator
+struct ExampleDescriptorHeapAllocator {
+    ID3D12DescriptorHeap*       Heap = nullptr;
+    D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
+    D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
+    UINT                        HeapHandleIncrement;
+    ImVector<int>               FreeIndices;
+
+    void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap) {
+        IM_ASSERT(Heap == nullptr && FreeIndices.empty());
+        Heap = heap;
+        D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
+        HeapType = desc.Type;
+        HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
+        HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+        HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
+        FreeIndices.reserve((int)desc.NumDescriptors);
+        for(int n = desc.NumDescriptors; n > 0; n--) FreeIndices.push_back(n - 1);
+    }
+
+    void Destroy() {
+        Heap = nullptr;
+        FreeIndices.clear();
+    }
+
+    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
+        IM_ASSERT(FreeIndices.Size > 0);
+        int idx = FreeIndices.back();
+        FreeIndices.pop_back();
+        out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
+        out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    }
+
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle) {
+        int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+        int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+        IM_ASSERT(cpu_idx == gpu_idx);
+        FreeIndices.push_back(cpu_idx);
+    }
+};
+
+// Data
+static FrameContext                 g_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
+static UINT                         g_frameIndex = 0;
+
+static ID3D12Device*                g_pd3dDevice = nullptr;
+static ID3D12DescriptorHeap*        g_pd3dRtvDescHeap = nullptr;
+static ID3D12DescriptorHeap*        g_pd3dSrvDescHeap = nullptr;
+static ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
+static ID3D12CommandQueue*          g_pd3dCommandQueue = nullptr;
+static ID3D12GraphicsCommandList*   g_pd3dCommandList = nullptr;
+static ID3D12Fence*                 g_fence = nullptr;
+static HANDLE                       g_fenceEvent = nullptr;
+static UINT64                       g_fenceLastSignaledValue = 0;
+static IDXGISwapChain3*             g_pSwapChain = nullptr;
+static bool                         g_SwapChainOccluded = false;
+static HANDLE                       g_hSwapChainWaitableObject = nullptr;
+static ID3D12Resource*              g_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
+static D3D12_CPU_DESCRIPTOR_HANDLE  g_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
+
+// Forward declarations of helper functions
+
+std::wstring Window::convertToWString(const std::string_view str) {
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), nullptr, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), wstr.data(), size_needed);
+    return wstr;
 }
 
-#ifdef GL_DEBUG_SEVERITY_NOTIFICATION
-// OpenGL debug callback
-void APIENTRY glDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
-{
-    if (severity != GL_DEBUG_SEVERITY_NOTIFICATION && type != GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR) {
-        std::cerr << "OpenGL: " << message << std::endl;
-    }
-}
-#endif
-
-Window::Window(std::string_view title, const glm::ivec2& windowSize, OpenGLVersion glVersion, bool presentable)
-    : m_presentable(presentable), m_glVersion(glVersion)
-{
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) {
-        std::cerr << "Could not initialize GLFW" << std::endl;
-        exit(1);
-    }
-
-    if (m_presentable) {
-        glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-
-        if (glVersion == OpenGLVersion::GL3) {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        } else if (glVersion == OpenGLVersion::GL41) {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-            glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-        } else if (glVersion == OpenGLVersion::GL45) {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        }
-#ifndef NDEBUG // Automatically defined by CMake when compiling in Release/MinSizeRel mode.
-        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-#endif
-
-        // HighDPI awareness
-        // https://decovar.dev/blog/2019/08/04/glfw-dear-imgui/#high-dpi
-#ifdef _WIN32
-        // if it's a HighDPI monitor, try to scale everything
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        float xscale, yscale;
-        glfwGetMonitorContentScale(monitor, &xscale, &yscale);
-        if (xscale > 1 || yscale > 1) {
-            m_dpiScalingFactor = xscale;
-            glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
-        }
-#elif __APPLE__
-        // to prevent 1200x800 from becoming 2400x1600
-        glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
-#endif
-    } else {
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    }
-
+Window::Window(std::string_view title, const glm::ivec2& windowSize) {
     // std::string_view does not guarantee that the string contains a terminator character.
-    const std::string titleString { title };
-    m_pWindow = glfwCreateWindow(windowSize.x, windowSize.y, titleString.c_str(), nullptr, nullptr);
-    if (m_pWindow == nullptr) {
-        glfwTerminate();
-        std::cerr << "Could not create GLFW window" << std::endl;
+    const auto titleString = convertToWString(title);
+
+    // Create application window
+    wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"MicroMeshWindow", nullptr };
+    RegisterClassExW(&wc);
+    hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), WS_OVERLAPPEDWINDOW, 100, 100, windowSize.x, windowSize.y, nullptr, nullptr, wc.hInstance, nullptr);
+
+    // Initialize Direct3D
+    if(!CreateDeviceD3D(hwnd)) {
+        CleanupDeviceD3D();
+        UnregisterClassW(wc.lpszClassName, wc.hInstance);
         exit(1);
     }
-    glfwMakeContextCurrent(m_pWindow);
-    glfwSwapInterval(1); // Enable vsync. To disable vsync set this to 0.
 
-    float xScale, yScale;
-    glfwGetWindowContentScale(m_pWindow, &xScale, &yScale);
-    //std::cout << "Window content scale: " << xScale << ", " << yScale << std::endl;
+    // Show the window
+    ShowWindow(hwnd, SW_SHOWDEFAULT);
+    UpdateWindow(hwnd);
 
-    glfwGetWindowSize(m_pWindow, &m_windowSize.x, &m_windowSize.y);
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
-    if (m_presentable) {
-        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-            glfwTerminate();
-            std::cerr << "Could not initialize GLEW" << std::endl;
-            exit(1);
-        }
-        int glVersionMajor, glVersionMinor;
-        glGetIntegerv(GL_MAJOR_VERSION, &glVersionMajor);
-        glGetIntegerv(GL_MINOR_VERSION, &glVersionMinor);
-        std::cout << "Initialized OpenGL version " << glVersionMajor << "." << glVersionMinor << std::endl;
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsLight();
 
-        // NOTE(Mathijs): this is not supported on macOS since Apple can't be bothered to update
-        //  their OpenGL version past 4.1 which released in 2010!
-#if !defined(__APPLE__) && defined(GL_DEBUG_SEVERITY_NOTIFICATION) && !defined(NDEBUG)
-        // Custom debug message with breakpoints at the exact error. Only supported on OpenGL 4.3 and higher.
-        if (glVersionMajor > 4 || (glVersionMajor == 4 && glVersionMinor >= 3)) {
-            glDebugMessageCallback(glDebugCallback, nullptr);
-            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-        }
-#endif
+    // Setup Platform/Renderer backends
+    ImGui_ImplWin32_Init(hwnd);
 
-        // Setup Dear ImGui context.
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        (void)io;
-        // Setup Dear ImGui style.
-        ImGui::StyleColorsDark();
-        // ImGui scaling for HighDPI displays
-        // https://twitter.com/ocornut/status/939547856171659264?lang=en
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.ScaleAllSizes(m_dpiScalingFactor);
-        ImFontConfig cfg;
-        cfg.SizePixels = 13 * m_dpiScalingFactor;
-        io.Fonts->AddFontDefault(&cfg);
+    // Before 1.91.6: our signature was using a single descriptor. From 1.92, specifying SrvDescriptorAllocFn/SrvDescriptorFreeFn will be required to benefit from new features.
+    ImGui_ImplDX12_Init(g_pd3dDevice, APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, g_pd3dSrvDescHeap, g_pd3dSrvDescHeap->GetCPUDescriptorHandleForHeapStart(), g_pd3dSrvDescHeap->GetGPUDescriptorHandleForHeapStart());
 
-        ImGui_ImplGlfw_InitForOpenGL(m_pWindow, true);
-        switch (glVersion) {
-        case OpenGLVersion::GL2: {
-            if (!ImGui_ImplOpenGL2_Init()) {
-                std::cerr << "Could not initialize imgui" << std::endl;
-                exit(1);
-            }
-        } break;
-        case OpenGLVersion::GL3: {
-        } break;
-        case OpenGLVersion::GL41: {
-            if (!ImGui_ImplOpenGL3_Init()) {
-                std::cerr << "Could not initialize imgui" << std::endl;
-                exit(1);
-            }
-        } break;
-        case OpenGLVersion::GL45: {
-            if (!ImGui_ImplOpenGL3_Init()) {
-                std::cerr << "Could not initialize imgui" << std::endl;
-                exit(1);
-            }
-        } break;
-        };
-
-        glfwSetWindowUserPointer(m_pWindow, this);
-
-        glfwSetKeyCallback(m_pWindow, keyCallback);
-        glfwSetCharCallback(m_pWindow, charCallback);
-        glfwSetMouseButtonCallback(m_pWindow, mouseButtonCallback);
-        glfwSetCursorPosCallback(m_pWindow, mouseMoveCallback);
-        glfwSetScrollCallback(m_pWindow, scrollCallback);
-        glfwSetWindowSizeCallback(m_pWindow, windowSizeCallback);
-    }
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 }
 
-Window::~Window()
-{
-    if (m_presentable) {
-        switch (m_glVersion) {
-        case OpenGLVersion::GL2: {
-            ImGui_ImplOpenGL2_Shutdown();
-        } break;
-        case OpenGLVersion::GL3: {
-        } break;
-        case OpenGLVersion::GL41: {
-            ImGui_ImplOpenGL3_Shutdown();
-        } break;
-        case OpenGLVersion::GL45: {
-            ImGui_ImplOpenGL3_Shutdown();
-        } break;
-        };
-        ImGui_ImplGlfw_Shutdown();
-        ImGui::DestroyContext();
+Window::~Window() {
+    WaitForLastSubmittedFrame();
+
+    ImGui_ImplDX12_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
+
+    CleanupDeviceD3D();
+    DestroyWindow(hwnd);
+    UnregisterClassW(wc.lpszClassName, wc.hInstance);
+}
+
+bool Window::shouldClose() const {
+    return !done;
+}
+
+void Window::updateInput() {
+    // Poll and handle messages (inputs, window resize, etc.)
+    // See the WndProc() function below for our to dispatch events to the Win32 backend.
+    MSG msg;
+    while(::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+
+        if(msg.message == WM_QUIT) done = true;
     }
 
-    glfwDestroyWindow(m_pWindow);
-    glfwTerminate();
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
 }
 
-void Window::close()
-{
-    glfwSetWindowShouldClose(m_pWindow, 1);
-}
+void Window::swapBuffers() const {
+    ImGui::Render();
 
-bool Window::shouldClose()
-{
-    return glfwWindowShouldClose(m_pWindow) != 0;
-}
+    FrameContext* frameCtx = WaitForNextFrameResources();
+    UINT backBufferIdx = g_pSwapChain->GetCurrentBackBufferIndex();
+    frameCtx->CommandAllocator->Reset();
 
-void Window::updateInput()
-{
-    glfwPollEvents();
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource   = g_mainRenderTargetResource[backBufferIdx];
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    g_pd3dCommandList->Reset(frameCtx->CommandAllocator, nullptr);
+    g_pd3dCommandList->ResourceBarrier(1, &barrier);
 
-    if (m_presentable) {
-        // Start the Dear ImGui frame.
-        switch (m_glVersion) {
-        case OpenGLVersion::GL2: {
-            ImGui_ImplOpenGL2_NewFrame();
-        } break;
-        case OpenGLVersion::GL3:{
-        } break;
-        case OpenGLVersion::GL41: {
-            ImGui_ImplOpenGL3_NewFrame();
-        } break;
-        case OpenGLVersion::GL45: {
-            ImGui_ImplOpenGL3_NewFrame();
-        } break;
-        };
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-    }
-}
+    // Render Dear ImGui graphics
+    const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
+    g_pd3dCommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
+    g_pd3dCommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
+    g_pd3dCommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_pd3dCommandList);
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
+    g_pd3dCommandList->ResourceBarrier(1, &barrier);
+    g_pd3dCommandList->Close();
 
-void Window::swapBuffers()
-{
+    g_pd3dCommandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&g_pd3dCommandList);
 
-    if (m_presentable) {
-        // Rendering of Dear ImGui ui.
-        ImGui::Render();
-        switch (m_glVersion) {
-        case OpenGLVersion::GL2: {
-            ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-        } break;
-        case OpenGLVersion::GL3: {
-        } break;
-        case OpenGLVersion::GL41: {
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        } break;
-        case OpenGLVersion::GL45: {
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        } break;
-        };
-    }
+    // Present
+    HRESULT hr = g_pSwapChain->Present(1, 0);   // Present with vsync
+    //HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
+    g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
 
-    glfwSwapBuffers(m_pWindow);
+    UINT64 fenceValue = g_fenceLastSignaledValue + 1;
+    g_pd3dCommandQueue->Signal(g_fence, fenceValue);
+    g_fenceLastSignaledValue = fenceValue;
+    frameCtx->FenceValue = fenceValue;
 }
 
 
@@ -253,7 +218,7 @@ void Window::renderToImage (const std::filesystem::path& filePath, const bool fl
         std::string filePathString = filePath.string();
 
         // flips Y axis
-        if (flipY) {
+        if(flipY) {
             // swap entire lines (if height is odd will not touch middle line)
             for(int line = 0; line != m_windowSize.y/2; ++line) {
                    std::swap_ranges(pixels.begin() + 4 * m_windowSize.x * line,
@@ -262,186 +227,352 @@ void Window::renderToImage (const std::filesystem::path& filePath, const bool fl
             }
         }
 
-        if ((filePath.extension()).compare(".bmp") == 0) {
+        if((filePath.extension()).compare(".bmp") == 0) {
             stbi_write_bmp(filePathString.c_str(), m_windowSize.x, m_windowSize.y, 4, pixels.data());
         }
-        else if ((filePath.extension()).compare(".png") == 0) {
+        else if((filePath.extension()).compare(".png") == 0) {
             stbi_write_png(filePathString.c_str(), m_windowSize.x, m_windowSize.y, 4, pixels.data(), 4*m_windowSize.x);
         }
 }
 
 
-void Window::registerKeyCallback(KeyCallback&& callback)
-{
+void Window::registerKeyCallback(KeyCallback&& callback) {
     m_keyCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerCharCallback(CharCallback&& callback)
-{
+void Window::registerCharCallback(CharCallback&& callback) {
     m_charCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerMouseButtonCallback(MouseButtonCallback&& callback)
-{
+void Window::registerMouseButtonCallback(MouseButtonCallback&& callback) {
     m_mouseButtonCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerScrollCallback(ScrollCallback&& callback)
-{
+void Window::registerScrollCallback(ScrollCallback&& callback) {
     m_scrollCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerWindowResizeCallback(WindowResizeCallback&& callback)
-{
+void Window::registerWindowResizeCallback(WindowResizeCallback&& callback) {
     m_windowResizeCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerMouseMoveCallback(MouseMoveCallback&& callback)
-{
+void Window::registerMouseMoveCallback(MouseMoveCallback&& callback) {
     m_mouseMoveCallbacks.push_back(std::move(callback));
 }
 
-void Window::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-    ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
-
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureKeyboard)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_keyCallbacks)
-        callback(key, scancode, action, mods);
+bool Window::isKeyPressed(int key) const {
+    return (GetAsyncKeyState(key) & 0x8000) != 0;
 }
 
-void Window::charCallback(GLFWwindow* window, unsigned unicodeCodePoint)
-{
-    ImGui_ImplGlfw_CharCallback(window, unicodeCodePoint);
-
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureKeyboard) {
-        return;
+bool Window::isMouseButtonPressed(int button) const {
+    int vkButton;
+    switch (button) {
+        case 0: vkButton = VK_LBUTTON; break;
+        case 1: vkButton = VK_RBUTTON; break;
+        case 2: vkButton = VK_MBUTTON; break;
+        default: return false;
     }
 
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_charCallbacks)
-        callback(unicodeCodePoint);
+    return (GetAsyncKeyState(vkButton) & 0x8000) != 0;
 }
 
-void Window::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
-{
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureMouse)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_mouseButtonCallbacks)
-        callback(button, action, mods);
+glm::vec2 Window::getCursorPos() const{
+    POINT p;
+    GetCursorPos(&p);
+    ScreenToClient(hwnd, &p); // m_hWnd is your HWND stored in the Window class
+    return glm::vec2(static_cast<float>(p.x), static_cast<float>(m_windowSize.y - 1 - p.y));
 }
 
-void Window::mouseMoveCallback(GLFWwindow* window, double xpos, double ypos)
-{
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureMouse)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_mouseMoveCallbacks)
-        callback(glm::vec2(xpos, pThisWindow->m_windowSize.y - 1 - ypos));
-}
-
-void Window::scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
-{
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureMouse)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_scrollCallbacks)
-        callback(glm::vec2(xoffset, yoffset));
-}
-
-void Window::windowSizeCallback(GLFWwindow* window, int width, int height)
-{
-    Window* pThisWindow = static_cast<Window*>(glfwGetWindowUserPointer(window));
-    pThisWindow->m_windowSize = glm::ivec2 { width, height };
-
-    for (const auto& callback : pThisWindow->m_windowResizeCallbacks)
-        callback(glm::ivec2(width, height));
-}
-
-bool Window::isKeyPressed(int key) const
-{
-    return glfwGetKey(m_pWindow, key) == GLFW_PRESS;
-}
-
-bool Window::isMouseButtonPressed(int button) const
-{
-    return glfwGetMouseButton(m_pWindow, button) == GLFW_PRESS;
-}
-
-glm::vec2 Window::getCursorPos() const
-{
-    double x, y;
-    glfwGetCursorPos(m_pWindow, &x, &y);
-    return glm::vec2(x, m_windowSize.y - 1 - y);
-}
-
-glm::vec2 Window::getNormalizedCursorPos() const
-{
+glm::vec2 Window::getNormalizedCursorPos() const {
     return getCursorPos() / glm::vec2(m_windowSize);
 }
 
-glm::vec2 Window::getCursorPixel() const
-{
-    // https://stackoverflow.com/questions/45796287/screen-coordinates-to-world-coordinates
-    // Coordinates returned by glfwGetCursorPos are in screen coordinates which may not map 1:1 to
-    // pixel coordinates on some machines (e.g. with resolution scaling).
-    glm::ivec2 screenSize;
-    glfwGetWindowSize(m_pWindow, &screenSize.x, &screenSize.y);
-    glm::ivec2 framebufferSize;
-    glfwGetFramebufferSize(m_pWindow, &framebufferSize.x, &framebufferSize.y);
-
-    // double xpos, ypos;
-    // glfwGetCursorPos(m_pWindow, &xpos, &ypos);
-    // const glm::vec2 screenPos{ xpos, ypos };
-    const glm::vec2 screenPos = getCursorPos();
-    glm::vec2 pixelPos = screenPos / glm::vec2(screenSize) * glm::vec2(framebufferSize); // float division
-    pixelPos += glm::vec2(0.5f); // Shift to GL center convention.
-    return glm::vec2(pixelPos.x, pixelPos.y);
-}
-
-void Window::setMouseCapture(bool capture)
-{
-    if (capture) {
-        glfwSetInputMode(m_pWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    } else {
-        glfwSetInputMode(m_pWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    }
-
-    glfwPollEvents();
-}
-
-glm::ivec2 Window::getWindowSize() const
-{
+glm::ivec2 Window::getWindowSize() const {
     return m_windowSize;
 }
 
-glm::ivec2 Window::getFrameBufferSize() const
-{
-    glm::ivec2 out {};
-    glfwGetFramebufferSize(m_pWindow, &out.x, &out.y);
-    return out;
-}
-
-float Window::getAspectRatio() const
-{
-    if (m_windowSize.x == 0 || m_windowSize.y == 0)
-        return 1.0f;
+float Window::getAspectRatio() const {
+    if(m_windowSize.x == 0 || m_windowSize.y == 0) return 1.0f;
     return float(m_windowSize.x) / float(m_windowSize.y);
 }
 
-float Window::getDpiScalingFactor() const
-{
+float Window::getDpiScalingFactor() const {
     return m_dpiScalingFactor;
+}
+
+bool Window::CreateDeviceD3D(const HWND hWnd) {
+    // Setup swap chain
+    DXGI_SWAP_CHAIN_DESC1 sd;
+    {
+        ZeroMemory(&sd, sizeof(sd));
+        sd.BufferCount = APP_NUM_BACK_BUFFERS;
+        sd.Width = 0;
+        sd.Height = 0;
+        sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.SampleDesc.Count = 1;
+        sd.SampleDesc.Quality = 0;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+        sd.Scaling = DXGI_SCALING_STRETCH;
+        sd.Stereo = FALSE;
+    }
+
+    // [DEBUG] Enable debug interface
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    ID3D12Debug* pdx12Debug = nullptr;
+    if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug))))
+        pdx12Debug->EnableDebugLayer();
+#endif
+
+    // Create device
+    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+    if(D3D12CreateDevice(nullptr, featureLevel, IID_PPV_ARGS(&g_pd3dDevice)) != S_OK)
+        return false;
+
+    // [DEBUG] Setup debug interface to break on any warnings/errors
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    if(pdx12Debug != nullptr) {
+        ID3D12InfoQueue* pInfoQueue = nullptr;
+        g_pd3dDevice->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+        pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+        pInfoQueue->Release();
+        pdx12Debug->Release();
+    }
+#endif
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        desc.NumDescriptors = APP_NUM_BACK_BUFFERS;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        desc.NodeMask = 1;
+        if(g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dRtvDescHeap)) != S_OK) return false;
+
+        SIZE_T rtvDescriptorSize = g_pd3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = g_pd3dRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
+        for(UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
+            g_mainRenderTargetDescriptor[i] = rtvHandle;
+            rtvHandle.ptr += rtvDescriptorSize;
+        }
+    }
+
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        desc.NumDescriptors = APP_SRV_HEAP_SIZE;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if(g_pd3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&g_pd3dSrvDescHeap)) != S_OK) return false;
+        g_pd3dSrvDescHeapAlloc.Create(g_pd3dDevice, g_pd3dSrvDescHeap);
+    }
+
+    {
+        D3D12_COMMAND_QUEUE_DESC desc = {};
+        desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        desc.NodeMask = 1;
+        if(g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dCommandQueue)) != S_OK) return false;
+    }
+
+    for(UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++) {
+        if(g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator)) != S_OK) return false;
+    }
+
+    if(g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator, nullptr, IID_PPV_ARGS(&g_pd3dCommandList)) != S_OK || g_pd3dCommandList->Close() != S_OK) return false;
+
+    if(g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence)) != S_OK) return false;
+
+    g_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if(g_fenceEvent == nullptr) return false;
+
+    {
+        IDXGIFactory4* dxgiFactory = nullptr;
+        IDXGISwapChain1* swapChain1 = nullptr;
+        if(CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK) return false;
+        if(dxgiFactory->CreateSwapChainForHwnd(g_pd3dCommandQueue, hWnd, &sd, nullptr, nullptr, &swapChain1) != S_OK) return false;
+        if(swapChain1->QueryInterface(IID_PPV_ARGS(&g_pSwapChain)) != S_OK) return false;
+        swapChain1->Release();
+        dxgiFactory->Release();
+        g_pSwapChain->SetMaximumFrameLatency(APP_NUM_BACK_BUFFERS);
+        g_hSwapChainWaitableObject = g_pSwapChain->GetFrameLatencyWaitableObject();
+    }
+
+    CreateRenderTarget();
+    return true;
+}
+
+void Window::CleanupDeviceD3D() {
+    CleanupRenderTarget();
+    if(g_pSwapChain) { g_pSwapChain->SetFullscreenState(false, nullptr); g_pSwapChain->Release(); g_pSwapChain = nullptr; }
+    if(g_hSwapChainWaitableObject != nullptr) { CloseHandle(g_hSwapChainWaitableObject); }
+    for(UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++) {
+        if(g_frameContext[i].CommandAllocator) { g_frameContext[i].CommandAllocator->Release(); g_frameContext[i].CommandAllocator = nullptr; }
+    }
+    if(g_pd3dCommandQueue) { g_pd3dCommandQueue->Release(); g_pd3dCommandQueue = nullptr; }
+    if(g_pd3dCommandList) { g_pd3dCommandList->Release(); g_pd3dCommandList = nullptr; }
+    if(g_pd3dRtvDescHeap) { g_pd3dRtvDescHeap->Release(); g_pd3dRtvDescHeap = nullptr; }
+    if(g_pd3dSrvDescHeap) { g_pd3dSrvDescHeap->Release(); g_pd3dSrvDescHeap = nullptr; }
+    if(g_fence) { g_fence->Release(); g_fence = nullptr; }
+    if(g_fenceEvent) { CloseHandle(g_fenceEvent); g_fenceEvent = nullptr; }
+    if(g_pd3dDevice) { g_pd3dDevice->Release(); g_pd3dDevice = nullptr; }
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    IDXGIDebug1* pDebug = nullptr;
+    if(SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&pDebug)))) {
+        pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_SUMMARY);
+        pDebug->Release();
+    }
+#endif
+}
+
+void Window::CreateRenderTarget() {
+    for(UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
+        ID3D12Resource* pBackBuffer = nullptr;
+        g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
+        g_pd3dDevice->CreateRenderTargetView(pBackBuffer, nullptr, g_mainRenderTargetDescriptor[i]);
+        g_mainRenderTargetResource[i] = pBackBuffer;
+    }
+}
+
+void Window::CleanupRenderTarget() {
+    WaitForLastSubmittedFrame();
+
+    for(UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
+        if(g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = nullptr; }
+    }
+}
+
+void Window::WaitForLastSubmittedFrame() {
+    FrameContext* frameCtx = &g_frameContext[g_frameIndex % APP_NUM_FRAMES_IN_FLIGHT];
+
+    UINT64 fenceValue = frameCtx->FenceValue;
+    if(fenceValue == 0) return; // No fence was signaled
+
+    frameCtx->FenceValue = 0;
+    if(g_fence->GetCompletedValue() >= fenceValue) return;
+
+    g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
+    WaitForSingleObject(g_fenceEvent, INFINITE);
+}
+
+FrameContext* Window::WaitForNextFrameResources() {
+    UINT nextFrameIndex = g_frameIndex + 1;
+    g_frameIndex = nextFrameIndex;
+
+    HANDLE waitableObjects[] = { g_hSwapChainWaitableObject, nullptr };
+    DWORD numWaitableObjects = 1;
+
+    FrameContext* frameCtx = &g_frameContext[nextFrameIndex % APP_NUM_FRAMES_IN_FLIGHT];
+    UINT64 fenceValue = frameCtx->FenceValue;
+    if(fenceValue != 0) // means no fence was signaled
+    {
+        frameCtx->FenceValue = 0;
+        g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
+        waitableObjects[1] = g_fenceEvent;
+        numWaitableObjects = 2;
+    }
+
+    WaitForMultipleObjects(numWaitableObjects, waitableObjects, TRUE, INFINITE);
+
+    return frameCtx;
+}
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Win32 message handler
+// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
+
+    auto* pWindow = reinterpret_cast<Window*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+    if(!pWindow) return DefWindowProcW(hWnd, msg, wParam, lParam);
+
+    const ImGuiIO& io = ImGui::GetIO();
+
+    switch(msg) {
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            if(io.WantCaptureKeyboard) break;
+
+            int action = (msg == WM_KEYDOWN) ? GLFW_PRESS : GLFW_RELEASE;
+            int key = static_cast<int>(wParam);
+            int scancode = 0; // Optional: can use MapVirtualKey if needed
+            int mods = 0;     // Optional: get with GetKeyState(VK_SHIFT), etc.
+
+            for(const auto& cb : pWindow->m_keyCallbacks) cb(key, scancode, action, mods);
+            break;
+        }
+
+        case WM_CHAR:
+        {
+            if(io.WantCaptureKeyboard) break;
+
+            auto codepoint = static_cast<unsigned>(wParam);
+            for(const auto& cb : pWindow->m_charCallbacks) cb(codepoint);
+            break;
+        }
+
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        {
+            if(io.WantCaptureMouse) break;
+
+            int button = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? GLFW_MOUSE_BUTTON_LEFT : GLFW_MOUSE_BUTTON_RIGHT;
+            int action = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) ? GLFW_PRESS : GLFW_RELEASE;
+            int mods = 0; // Optional modifier keys
+
+            for(const auto& cb : pWindow->m_mouseButtonCallbacks) cb(button, action, mods);
+            break;
+        }
+
+        case WM_MOUSEMOVE:
+        {
+            if(io.WantCaptureMouse) break;
+
+            int x = GET_X_LPARAM(lParam);
+            int y = GET_Y_LPARAM(lParam);
+            glm::vec2 pos = glm::vec2(x, pWindow->m_windowSize.y - 1 - y);
+
+            for(const auto& cb : pWindow->m_mouseMoveCallbacks) cb(pos);
+            break;
+        }
+
+        case WM_MOUSEWHEEL:
+        {
+            if(io.WantCaptureMouse) break;
+
+            float deltaY = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+            glm::vec2 offset = glm::vec2(0, deltaY);
+
+            for(const auto& cb : pWindow->m_scrollCallbacks) cb(offset);
+            break;
+        }
+        case WM_SIZE:
+            if(g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED) {
+                WaitForLastSubmittedFrame();
+                CleanupRenderTarget();
+                HRESULT result = g_pSwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+                assert(SUCCEEDED(result) && "Failed to resize swapchain.");
+                CreateRenderTarget();
+            }
+            return 0;
+        case WM_SYSCOMMAND:
+            if((wParam & 0xfff0) == SC_KEYMENU) return 0; // Disable ALT application menu
+            break;
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+    }
+
+    return DefWindowProcW(hWnd, msg, wParam, lParam);
 }

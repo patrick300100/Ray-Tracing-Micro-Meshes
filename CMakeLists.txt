@@ -21,6 +21,10 @@ target_link_libraries(Micro_Meshes PRIVATE CGFramework d3d12 dxgi d3dcompiler)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 
+if (MSVC)
+	target_compile_definitions(Micro_Meshes PRIVATE _USE_MATH_DEFINES)
+endif()
+
 # We would like to copy the files when they changed. Even if no *.cpp files were modified (and
 # thus no build is triggered). We tell CMake that the executable depends on the shader files in
 # the build directory. We also tell it how to generate those files (by copying them from the

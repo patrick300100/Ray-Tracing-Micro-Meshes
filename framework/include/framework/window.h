@@ -1,4 +1,7 @@
 #pragma once
+#include <d3d12.h>
+#include <imgui/imgui.h>
+
 #include "disable_all_warnings.h"
 #include "opengl_includes.h"
 // Suppress warnings in third-party code.
@@ -12,24 +15,21 @@ DISABLE_WARNINGS_POP()
 #include <vector>
 #include <filesystem>
 
-enum class OpenGLVersion {
-	GL2,
-	GL3,
-	GL41,
-	GL45
+struct FrameContext
+{
+	ID3D12CommandAllocator*     CommandAllocator;
+	UINT64                      FenceValue;
 };
 
 class Window {
 public:
-	Window(std::string_view title, const glm::ivec2& windowSize, OpenGLVersion glVersion, bool presentable = true);
+	Window(std::string_view title, const glm::ivec2& windowSize);
 	~Window();
 
-	void close(); // Set shouldClose() to true.
-	[[nodiscard]] bool shouldClose(); // Whether window should close (close() was called or user clicked the close button).
+	[[nodiscard]] bool shouldClose() const; // Whether window should close (user clicked the close button).
 
 	void updateInput();
-	void swapBuffers(); // Swap the front/back buffer
-
+	void swapBuffers() const; // Swap the front/back buffer
 
 	void renderToImage(const std::filesystem::path& filePath, const bool flipY = false); // renders the output to an image
 
@@ -46,37 +46,36 @@ public:
 	using WindowResizeCallback = std::function<void(const glm::ivec2& size)>;
 	void registerWindowResizeCallback(WindowResizeCallback&&);
 
-	bool isKeyPressed(int key) const;
-	bool isMouseButtonPressed(int button) const;
+	[[nodiscard]] bool isKeyPressed(int key) const;
+	[[nodiscard]] bool isMouseButtonPressed(int button) const;
 
 	// NOTE: coordinates are such that the origin is at the left bottom of the screen.
-	glm::vec2 getCursorPos() const; // DPI independent.
-	glm::vec2 getNormalizedCursorPos() const; // Ranges from 0 to 1.
-	glm::vec2 getCursorPixel() const;
-
-	// Hides mouse and prevents it from going out of the window.
-	// Useful for a first person camera.
-	void setMouseCapture(bool capture);
+	[[nodiscard]] glm::vec2 getCursorPos() const; // DPI independent.
+	[[nodiscard]] glm::vec2 getNormalizedCursorPos() const; // Ranges from 0 to 1.
 
 	[[nodiscard]] glm::ivec2 getWindowSize() const;
-	[[nodiscard]] glm::ivec2 getFrameBufferSize() const;
 	[[nodiscard]] float getAspectRatio() const;
 	[[nodiscard]] float getDpiScalingFactor() const;
 
 private:
-	static void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-	static void charCallback(GLFWwindow* window, unsigned unicodeCodePoint);
-	static void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-	static void mouseMoveCallback(GLFWwindow* window, double xpos, double ypos);
-	static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
-	static void windowSizeCallback(GLFWwindow* window, int width, int height);
-
-private:
-	GLFWwindow* m_pWindow;
-	glm::ivec2 m_windowSize;
+	WNDCLASSEXW wc;
+	HWND hwnd;
+	bool done = false;
+	ImVec4 clear_color = ImVec4(0.29f, 0.29f, 0.29f, 1.00f);
 	float m_dpiScalingFactor = 1.0f;
-	const OpenGLVersion m_glVersion;
-        bool m_presentable;
+
+	static bool CreateDeviceD3D(HWND hWnd);
+	static void CleanupDeviceD3D();
+	static void CreateRenderTarget();
+	static void CleanupRenderTarget();
+	static void WaitForLastSubmittedFrame();
+	static FrameContext* WaitForNextFrameResources();
+	static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+	static std::wstring convertToWString(std::string_view str);
+
+public:
+	glm::ivec2 m_windowSize;
 
 	std::vector<KeyCallback> m_keyCallbacks;
 	std::vector<CharCallback> m_charCallbacks;
