@@ -28,6 +28,7 @@ else()
 		"src/TinyGLTFLoader.cpp"
 		"src/MeshIterator.cpp"
 		"src/mesh.cpp"
+		"src/GPUState.cpp"
 	)
 	target_include_directories(CGFramework PRIVATE "include/framework/" PUBLIC "include/")
 	target_include_directories(CGFramework PUBLIC "third_party/d3dx12")

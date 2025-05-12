@@ -1,5 +1,6 @@
 #pragma once
 #include <d3d12.h>
+#include "GPUState.h"
 #include <imgui/imgui.h>
 
 #include "disable_all_warnings.h"
@@ -15,12 +16,6 @@ DISABLE_WARNINGS_POP()
 #include <vector>
 #include <filesystem>
 
-struct FrameContext
-{
-	ID3D12CommandAllocator*     CommandAllocator;
-	UINT64                      FenceValue;
-};
-
 class Window {
 public:
 	Window(std::string_view title, const glm::ivec2& windowSize);
@@ -29,7 +24,7 @@ public:
 	[[nodiscard]] bool shouldClose() const; // Whether window should close (user clicked the close button).
 
 	void updateInput();
-	void swapBuffers() const; // Swap the front/back buffer
+	void swapBuffers(); // Swap the front/back buffer
 
 	void renderToImage(const std::filesystem::path& filePath, const bool flipY = false); // renders the output to an image
 
@@ -64,18 +59,13 @@ private:
 	ImVec4 clear_color = ImVec4(0.29f, 0.29f, 0.29f, 1.00f);
 	float m_dpiScalingFactor = 1.0f;
 
-	static bool CreateDeviceD3D(HWND hWnd);
-	static void CleanupDeviceD3D();
-	static void CreateRenderTarget();
-	static void CleanupRenderTarget();
-	static void WaitForLastSubmittedFrame();
-	static FrameContext* WaitForNextFrameResources();
 	static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 	static std::wstring convertToWString(std::string_view str);
 
 public:
 	glm::ivec2 m_windowSize;
+	GPUState gpuState;
 
 	std::vector<KeyCallback> m_keyCallbacks;
 	std::vector<CharCallback> m_charCallbacks;
