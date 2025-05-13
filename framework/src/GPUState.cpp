@@ -228,11 +228,11 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     commandList->OMSetRenderTargets(1, &mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
     commandList->SetDescriptorHeaps(1, &srvDescHeap);
 
+    render(); //Render mesh and other drawable objects
+
     //Render ImGui
     ImGui::Render();
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
-
-    render(); //Render mesh and other drawable objects
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
