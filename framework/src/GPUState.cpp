@@ -11,79 +11,12 @@
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-UINT GPUState::get_g_frame_index() const {
-    return frameIndex;
-}
-
 ID3D12Device* GPUState::get_device() const {
     return device;
 }
 
-ID3D12DescriptorHeap* GPUState::get_rtv_heap() const {
-    return rtvDescHeap;
-}
-
-ID3D12DescriptorHeap* GPUState::get_srv_heap() const {
-    return srvDescHeap;
-}
-
-const ExampleDescriptorHeapAllocator & GPUState::get_srv_heap_alloc() const {
-    return srvDescHeapAlloc;
-}
-
-ID3D12CommandQueue* GPUState::get_command_queue() const {
-    return commandQueue;
-}
-
-ID3D12GraphicsCommandList* GPUState::get_command_list() const {
-    return commandList;
-}
-
-ID3D12Fence* GPUState::get_fence() const {
-    return fence;
-}
-
-HANDLE GPUState::get_fence_event() const {
-    return fenceEvent;
-}
-
-UINT64 GPUState::get_fence_last_signaled_value() const {
-    return fenceLastSignaledValue;
-}
-
 IDXGISwapChain3* GPUState::get_swap_chain() const {
     return swapChain;
-}
-
-bool GPUState::is_swap_chain_occluded() const {
-    return swapChainOccluded;
-}
-
-HANDLE GPUState::get_swap_chain_waitable_object() const {
-    return swapChainWaitableObject;
-}
-
-ID3D12Resource* GPUState::getMainRenderTargetResource(const UINT index) const {
-    assert(index < APP_NUM_BACK_BUFFERS);
-    return mainRenderTargetResource[index];
-}
-
-D3D12_CPU_DESCRIPTOR_HANDLE GPUState::getMainRenderTargetDescriptor(UINT index) const {
-    if(index < APP_NUM_BACK_BUFFERS) return mainRenderTargetDescriptor[index];
-
-    return D3D12_CPU_DESCRIPTOR_HANDLE{0}; // Return a null descriptor if out-of-bounds (optional safeguard)
-}
-
-void GPUState::setSwapChainOccluded(const bool occluded) {
-    swapChainOccluded = occluded;
-}
-
-void GPUState::setFenceLastSignaledValue(const UINT64 value) {
-    fenceLastSignaledValue = value;
-}
-
-void GPUState::setMainRenderTargetResource(const UINT index, ID3D12Resource* resource) {
-    if(index < APP_NUM_BACK_BUFFERS) mainRenderTargetResource[index] = resource;
 }
 
 GPUState::~GPUState() {
@@ -119,9 +52,7 @@ bool GPUState::createDevice(const HWND hWnd) {
 #endif
 
     // Create device
-    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
-    if(D3D12CreateDevice(nullptr, featureLevel, IID_PPV_ARGS(&device)) != S_OK)
-        return false;
+    if(D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device)) != S_OK) return false;
 
     // [DEBUG] Setup debug interface to break on any warnings/errors
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -275,4 +206,48 @@ void GPUState::cleanupRenderTarget() {
 void GPUState::initImGui() const {
     // Before 1.91.6: our signature was using a single descriptor. From 1.92, specifying SrvDescriptorAllocFn/SrvDescriptorFreeFn will be required to benefit from new features.
     ImGui_ImplDX12_Init(device, APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap, srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
+}
+
+void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render) {
+    FrameContext* frameCtx = waitForNextFrameResources();
+    const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
+    frameCtx->commandAllocator->Reset();
+
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource   = mainRenderTargetResource[backBufferIdx];
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    commandList->Reset(frameCtx->commandAllocator, nullptr);
+    commandList->ResourceBarrier(1, &barrier);
+
+    const float clear_color_with_alpha[4] = { clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w };
+    commandList->ClearRenderTargetView(mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
+    commandList->OMSetRenderTargets(1, &mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
+    commandList->SetDescriptorHeaps(1, &srvDescHeap);
+
+    //Render ImGui
+    ImGui::Render();
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+
+    render(); //Render mesh and other drawable objects
+
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
+    commandList->ResourceBarrier(1, &barrier);
+    commandList->Close();
+
+    commandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&commandList);
+
+    // Present
+    HRESULT hr = swapChain->Present(1, 0); // Present with vsync
+    //HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
+    swapChainOccluded = hr == DXGI_STATUS_OCCLUDED;
+
+    UINT64 fenceValue = fenceLastSignaledValue + 1;
+    commandQueue->Signal(fence, fenceValue);
+    fenceLastSignaledValue = fenceValue;
+    frameCtx->fenceValue = fenceValue;
 }

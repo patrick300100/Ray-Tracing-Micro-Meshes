@@ -4,6 +4,7 @@
 #include <dxgi1_4.h>
 #include <imgui/imgui.h>
 #include <wrl/client.h>
+#include <functional>
 
 struct FrameContext {
     ID3D12CommandAllocator* commandAllocator;
@@ -92,23 +93,8 @@ public:
 
     void initImGui() const;
 
-    [[nodiscard]] UINT get_g_frame_index() const;
     [[nodiscard]] ID3D12Device* get_device() const;
-    [[nodiscard]] ID3D12DescriptorHeap* get_rtv_heap() const;
-    [[nodiscard]] ID3D12DescriptorHeap* get_srv_heap() const;
-    [[nodiscard]] const ExampleDescriptorHeapAllocator& get_srv_heap_alloc() const;
-    [[nodiscard]] ID3D12CommandQueue* get_command_queue() const;
-    [[nodiscard]] ID3D12GraphicsCommandList* get_command_list() const;
-    [[nodiscard]] ID3D12Fence* get_fence() const;
-    [[nodiscard]] HANDLE get_fence_event() const;
-    [[nodiscard]] UINT64 get_fence_last_signaled_value() const;
     [[nodiscard]] IDXGISwapChain3* get_swap_chain() const;
-    [[nodiscard]] bool is_swap_chain_occluded() const;
-    [[nodiscard]] HANDLE get_swap_chain_waitable_object() const;
-    [[nodiscard]] ID3D12Resource* getMainRenderTargetResource(UINT index) const;
-    [[nodiscard]] D3D12_CPU_DESCRIPTOR_HANDLE getMainRenderTargetDescriptor(UINT index) const;
 
-    void setSwapChainOccluded(bool occluded);
-    void setFenceLastSignaledValue(UINT64 value);
-    void setMainRenderTargetResource(UINT index, ID3D12Resource* resource);
+    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render);
 };

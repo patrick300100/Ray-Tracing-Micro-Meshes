@@ -75,64 +75,15 @@ void Window::updateInput() {
     // Poll and handle messages (inputs, window resize, etc.)
     // See the WndProc() function below for our to dispatch events to the Win32 backend.
     MSG msg;
-    while(::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+    while(PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
 
         if(msg.message == WM_QUIT) done = true;
     }
-
-    // Start the Dear ImGui frame
-    ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
 }
 
-void Window::swapBuffers() {
-    ImGui::Render();
-
-    FrameContext* frameCtx = gpuState.waitForNextFrameResources();;
-    UINT backBufferIdx = gpuState.get_swap_chain()->GetCurrentBackBufferIndex();
-    frameCtx->commandAllocator->Reset();
-
-    D3D12_RESOURCE_BARRIER barrier = {};
-    barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource   = gpuState.getMainRenderTargetResource(backBufferIdx);
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    gpuState.get_command_list()->Reset(frameCtx->commandAllocator, nullptr);
-    gpuState.get_command_list()->ResourceBarrier(1, &barrier);
-
-    // Render Dear ImGui graphics
-    const float clear_color_with_alpha[4] = { clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w };
-    gpuState.get_command_list()->ClearRenderTargetView(gpuState.getMainRenderTargetDescriptor(backBufferIdx), clear_color_with_alpha, 0, nullptr);
-    auto targetDesc = gpuState.getMainRenderTargetDescriptor(backBufferIdx);
-    gpuState.get_command_list()->OMSetRenderTargets(1, &targetDesc, FALSE, nullptr);
-    auto srvHeap = gpuState.get_srv_heap();
-    gpuState.get_command_list()->SetDescriptorHeaps(1, &srvHeap);
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), gpuState.get_command_list());
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
-    gpuState.get_command_list()->ResourceBarrier(1, &barrier);
-    gpuState.get_command_list()->Close();
-
-    auto cmdl = gpuState.get_command_list();
-    gpuState.get_command_queue()->ExecuteCommandLists(1, (ID3D12CommandList* const*)&cmdl);
-
-    // Present
-    HRESULT hr = gpuState.get_swap_chain()->Present(1, 0);   // Present with vsync
-    //HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
-    gpuState.setSwapChainOccluded(hr == DXGI_STATUS_OCCLUDED);
-
-    UINT64 fenceValue = gpuState.get_fence_last_signaled_value() + 1;
-    gpuState.get_command_queue()->Signal(gpuState.get_fence(), fenceValue);
-    gpuState.setFenceLastSignaledValue(fenceValue);
-    frameCtx->fenceValue = fenceValue;
-}
-
-void Window::renderToImage (const std::filesystem::path& filePath, const bool flipY) {
+void Window::renderToImage (const std::filesystem::path& filePath, const bool flipY) const {
     std::vector <GLubyte> pixels;
     pixels.reserve (4 * m_windowSize.x * m_windowSize.y);
 
@@ -317,4 +268,15 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
     }
 
     return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+void Window::prepareFrame() {
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+}
+
+void Window::renderFrame(const std::function<void()>& render) {
+    gpuState.renderFrame(clearColor, render);
 }

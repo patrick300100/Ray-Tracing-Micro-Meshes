@@ -24,9 +24,8 @@ public:
 	[[nodiscard]] bool shouldClose() const; // Whether window should close (user clicked the close button).
 
 	void updateInput();
-	void swapBuffers(); // Swap the front/back buffer
 
-	void renderToImage(const std::filesystem::path& filePath, const bool flipY = false); // renders the output to an image
+	void renderToImage(const std::filesystem::path& filePath, bool flipY = false) const; // renders the output to an image
 
 	using KeyCallback = std::function<void(int key, int scancode, int action, int mods)>;
 	void registerKeyCallback(KeyCallback&&);
@@ -52,11 +51,14 @@ public:
 	[[nodiscard]] float getAspectRatio() const;
 	[[nodiscard]] float getDpiScalingFactor() const;
 
+	static void prepareFrame();
+	void renderFrame(const std::function<void()>& render);
+
 private:
 	WNDCLASSEXW wc;
 	HWND hwnd;
 	bool done = false;
-	ImVec4 clear_color = ImVec4(0.29f, 0.29f, 0.29f, 1.00f);
+	ImVec4 clearColor = ImVec4(0.29f, 0.29f, 0.29f, 1.00f);
 	float m_dpiScalingFactor = 1.0f;
 
 	static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
