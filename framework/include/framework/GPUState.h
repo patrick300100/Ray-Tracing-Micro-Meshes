@@ -7,13 +7,13 @@
 #include <functional>
 
 struct FrameContext {
-    ID3D12CommandAllocator* commandAllocator;
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator;
     UINT64 fenceValue;
 };
 
 // Simple free list based allocator
 struct ExampleDescriptorHeapAllocator {
-    ID3D12DescriptorHeap*       Heap = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> Heap;
     D3D12_DESCRIPTOR_HEAP_TYPE  HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
     D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
     D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
@@ -61,24 +61,24 @@ class GPUState {
     FrameContext frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
     UINT frameIndex = 0;
 
-    ID3D12Device* device = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Device> device;
 
-    ID3D12DescriptorHeap* rtvDescHeap = nullptr;
-    ID3D12DescriptorHeap* srvDescHeap = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvDescHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvDescHeap;
     ExampleDescriptorHeapAllocator srvDescHeapAlloc{};
 
-    ID3D12CommandQueue* commandQueue = nullptr;
-    ID3D12GraphicsCommandList* commandList = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList;
 
-    ID3D12Fence* fence = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence;
     HANDLE fenceEvent = nullptr;
     UINT64 fenceLastSignaledValue = 0;
 
-    IDXGISwapChain3* swapChain = nullptr;
+    Microsoft::WRL::ComPtr<IDXGISwapChain3> swapChain;
     bool swapChainOccluded = false;
     HANDLE swapChainWaitableObject = nullptr;
 
-    ID3D12Resource* mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
+    Microsoft::WRL::ComPtr<ID3D12Resource> mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
     D3D12_CPU_DESCRIPTOR_HANDLE mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
 
 public:
@@ -93,8 +93,8 @@ public:
 
     void initImGui() const;
 
-    [[nodiscard]] ID3D12Device* get_device() const;
-    [[nodiscard]] IDXGISwapChain3* get_swap_chain() const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Device> get_device() const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
     void renderFrame(const ImVec4& clearColor, const std::function<void()>& render);
 };

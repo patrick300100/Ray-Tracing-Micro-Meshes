@@ -11,11 +11,11 @@
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-ID3D12Device* GPUState::get_device() const {
+Microsoft::WRL::ComPtr<ID3D12Device> GPUState::get_device() const {
     return device;
 }
 
-IDXGISwapChain3* GPUState::get_swap_chain() const {
+Microsoft::WRL::ComPtr<IDXGISwapChain3> GPUState::get_swap_chain() const {
     return swapChain;
 }
 
@@ -89,7 +89,7 @@ bool GPUState::createDevice(const HWND hWnd) {
         desc.NumDescriptors = APP_SRV_HEAP_SIZE;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&srvDescHeap)) != S_OK) return false;
-        srvDescHeapAlloc.Create(device, srvDescHeap);
+        srvDescHeapAlloc.Create(device.Get(), srvDescHeap.Get());
     }
 
     {
@@ -104,7 +104,7 @@ bool GPUState::createDevice(const HWND hWnd) {
         if(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frameContext[i].commandAllocator)) != S_OK) return false;
     }
 
-    if(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, frameContext[0].commandAllocator, nullptr, IID_PPV_ARGS(&commandList)) != S_OK || commandList->Close() != S_OK) return false;
+    if(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, frameContext[0].commandAllocator.Get(), nullptr, IID_PPV_ARGS(&commandList)) != S_OK || commandList->Close() != S_OK) return false;
 
     if(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)) != S_OK) return false;
 
@@ -115,7 +115,7 @@ bool GPUState::createDevice(const HWND hWnd) {
         IDXGIFactory4* dxgiFactory = nullptr;
         IDXGISwapChain1* swapChain1 = nullptr;
         if(CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK) return false;
-        if(dxgiFactory->CreateSwapChainForHwnd(commandQueue, hWnd, &sd, nullptr, nullptr, &swapChain1) != S_OK) return false;
+        if(dxgiFactory->CreateSwapChainForHwnd(commandQueue.Get(), hWnd, &sd, nullptr, nullptr, &swapChain1) != S_OK) return false;
         if(swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain)) != S_OK) return false;
         swapChain1->Release();
         dxgiFactory->Release();
@@ -129,23 +129,27 @@ bool GPUState::createDevice(const HWND hWnd) {
 
 void GPUState::cleanupDevice() {
     cleanupRenderTarget();
-    if(swapChain) { swapChain->SetFullscreenState(false, nullptr); swapChain->Release(); swapChain = nullptr; }
-    if(swapChainWaitableObject != nullptr) { CloseHandle(swapChainWaitableObject); }
-    for(UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++) {
-        if(frameContext[i].commandAllocator) { frameContext[i].commandAllocator->Release(); frameContext[i].commandAllocator = nullptr; }
+    if(swapChain) {
+        swapChain->SetFullscreenState(false, nullptr);
+        swapChain.Reset();
     }
-    if(commandQueue) { commandQueue->Release(); commandQueue = nullptr; }
-    if(commandList) { commandList->Release(); commandList = nullptr; }
-    if(rtvDescHeap) { rtvDescHeap->Release(); rtvDescHeap = nullptr; }
-    if(srvDescHeap) { srvDescHeap->Release(); srvDescHeap = nullptr; }
-    if(fence) { fence->Release(); fence = nullptr; }
+    if(swapChainWaitableObject != nullptr) { CloseHandle(swapChainWaitableObject); }
+    for(auto& fc : frameContext) {
+        if(fc.commandAllocator) fc.commandAllocator.Reset();
+    }
+    if(commandQueue) commandQueue.Reset();
+    if(commandList) commandList.Reset();
+    if(rtvDescHeap) rtvDescHeap.Reset();
+    if(srvDescHeap) srvDescHeap.Reset();
+    srvDescHeapAlloc.Destroy();
+    if(fence) fence.Reset();
     if(fenceEvent) { CloseHandle(fenceEvent); fenceEvent = nullptr; }
-    if(device) { device->Release(); device = nullptr; }
+    if(device) device.Reset();
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
     IDXGIDebug1* pDebug = nullptr;
     if(SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&pDebug)))) {
-        pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_SUMMARY);
+        pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_DETAIL);
         pDebug->Release();
     }
 #endif
@@ -153,10 +157,8 @@ void GPUState::cleanupDevice() {
 
 void GPUState::createRenderTarget() {
     for(UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
-        ID3D12Resource* pBackBuffer = nullptr;
-        swapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
-        device->CreateRenderTargetView(pBackBuffer, nullptr, mainRenderTargetDescriptor[i]);
-        mainRenderTargetResource[i] = pBackBuffer;
+        swapChain->GetBuffer(i, IID_PPV_ARGS(&mainRenderTargetResource[i]));
+        device->CreateRenderTargetView(mainRenderTargetResource[i].Get(), nullptr, mainRenderTargetDescriptor[i]);
     }
 }
 
@@ -198,14 +200,14 @@ FrameContext* GPUState::waitForNextFrameResources() {
 void GPUState::cleanupRenderTarget() {
     waitForLastSubmittedFrame();
 
-    for(UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
-        if(mainRenderTargetResource[i]) { mainRenderTargetResource[i]->Release(); mainRenderTargetResource[i] = nullptr; }
+    for(auto& rt : mainRenderTargetResource) {
+        if(rt) rt.Reset();
     }
 }
 
 void GPUState::initImGui() const {
     // Before 1.91.6: our signature was using a single descriptor. From 1.92, specifying SrvDescriptorAllocFn/SrvDescriptorFreeFn will be required to benefit from new features.
-    ImGui_ImplDX12_Init(device, APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap, srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
+    ImGui_ImplDX12_Init(device.Get(), APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap.Get(), srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
 }
 
 void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render) {
@@ -216,30 +218,33 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     D3D12_RESOURCE_BARRIER barrier = {};
     barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource   = mainRenderTargetResource[backBufferIdx];
+    barrier.Transition.pResource   = mainRenderTargetResource[backBufferIdx].Get();
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
     barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    commandList->Reset(frameCtx->commandAllocator, nullptr);
+    commandList->Reset(frameCtx->commandAllocator.Get(), nullptr);
     commandList->ResourceBarrier(1, &barrier);
 
     const float clear_color_with_alpha[4] = { clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w };
     commandList->ClearRenderTargetView(mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
     commandList->OMSetRenderTargets(1, &mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
-    commandList->SetDescriptorHeaps(1, &srvDescHeap);
+
+    ID3D12DescriptorHeap* heap[] = { srvDescHeap.Get() };
+    commandList->SetDescriptorHeaps(1, heap);
 
     render(); //Render mesh and other drawable objects
 
     //Render ImGui
     ImGui::Render();
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
 
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
     barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
     commandList->ResourceBarrier(1, &barrier);
     commandList->Close();
 
-    commandQueue->ExecuteCommandLists(1, (ID3D12CommandList* const*)&commandList);
+    ID3D12CommandList* cmdsList[] = { commandList.Get() };
+    commandQueue->ExecuteCommandLists(1, cmdsList);
 
     // Present
     HRESULT hr = swapChain->Present(1, 0); // Present with vsync
@@ -247,7 +252,7 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     swapChainOccluded = hr == DXGI_STATUS_OCCLUDED;
 
     UINT64 fenceValue = fenceLastSignaledValue + 1;
-    commandQueue->Signal(fence, fenceValue);
+    commandQueue->Signal(fence.Get(), fenceValue);
     fenceLastSignaledValue = fenceValue;
     frameCtx->fenceValue = fenceValue;
 }
