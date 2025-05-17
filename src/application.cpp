@@ -17,8 +17,15 @@ DISABLE_WARNINGS_POP()
 
 class Application {
 public:
-    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
-        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath);
+    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState) {
+        if(!gpuState.createDevice(window.getHWND())) {
+            gpuState.cleanupDevice();
+            UnregisterClassW(window.getWc().lpszClassName, window.getWc().hInstance);
+            exit(1);
+        }
+        gpuState.initImGui();
+
+        //mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath);
 
         try {
             skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/skinning.vert").addFS(RESOURCE_ROOT "shaders/skinning.frag").build();
@@ -68,6 +75,7 @@ public:
     }
 
 private:
+    GPUState gpuState;
     Window window;
 
     Shader skinningShader;

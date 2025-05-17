@@ -17,7 +17,7 @@ std::wstring Window::convertToWString(const std::string_view str) {
     return wstr;
 }
 
-Window::Window(std::string_view title, const glm::ivec2& windowSize) {
+Window::Window(std::string_view title, const glm::ivec2& windowSize, GPUState* gpuStatePtr) {
     // std::string_view does not guarantee that the string contains a terminator character.
     const auto titleString = convertToWString(title);
 
@@ -25,13 +25,6 @@ Window::Window(std::string_view title, const glm::ivec2& windowSize) {
     wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"MicroMeshWindow", nullptr };
     RegisterClassExW(&wc);
     hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), WS_OVERLAPPEDWINDOW, 100, 100, windowSize.x, windowSize.y, nullptr, nullptr, wc.hInstance, nullptr);
-
-    // Initialize Direct3D
-    if(!gpuState.createDevice(hwnd)) {
-        gpuState.cleanupDevice();
-        UnregisterClassW(wc.lpszClassName, wc.hInstance);
-        exit(1);
-    }
 
     // Show the window
     ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -51,14 +44,11 @@ Window::Window(std::string_view title, const glm::ivec2& windowSize) {
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(hwnd);
 
-    gpuState.initImGui();
-
     SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(gpuStatePtr));
 }
 
 Window::~Window() {
-    gpuState.waitForLastSubmittedFrame();
-
     ImGui_ImplDX12_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
@@ -83,7 +73,7 @@ void Window::updateInput() {
     }
 }
 
-void Window::renderToImage (const std::filesystem::path& filePath, const bool flipY) const {
+void Window::renderToImage(const std::filesystem::path& filePath, const bool flipY) const {
     std::vector <GLubyte> pixels;
     pixels.reserve (4 * m_windowSize.x * m_windowSize.y);
 
@@ -152,7 +142,7 @@ bool Window::isMouseButtonPressed(int button) const {
 glm::vec2 Window::getCursorPos() const{
     POINT p;
     GetCursorPos(&p);
-    ScreenToClient(hwnd, &p); // m_hWnd is your HWND stored in the Window class
+    ScreenToClient(hwnd, &p);
     return glm::vec2(static_cast<float>(p.x), static_cast<float>(m_windowSize.y - 1 - p.y));
 }
 
@@ -186,6 +176,9 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
     auto* pWindow = reinterpret_cast<Window*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
     if(!pWindow) return DefWindowProcW(hWnd, msg, wParam, lParam);
+
+    auto* gpuState = reinterpret_cast<GPUState*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+    if(!gpuState) return DefWindowProcW(hWnd, msg, wParam, lParam);
 
     const ImGuiIO& io = ImGui::GetIO();
 
@@ -251,12 +244,12 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             break;
         }
         case WM_SIZE:
-            if(pWindow->gpuState.get_device() != nullptr && wParam != SIZE_MINIMIZED) {
-                pWindow->gpuState.waitForLastSubmittedFrame();
-                pWindow->gpuState.cleanupRenderTarget();
-                HRESULT result = pWindow->gpuState.get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+            if(gpuState->get_device() != nullptr && wParam != SIZE_MINIMIZED) {
+                gpuState->waitForLastSubmittedFrame();
+                gpuState->cleanupRenderTarget();
+                HRESULT result = gpuState->get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
                 assert(SUCCEEDED(result) && "Failed to resize swapchain.");
-                pWindow->gpuState.createRenderTarget();
+                gpuState->createRenderTarget();
             }
             return 0;
         case WM_SYSCOMMAND:
@@ -277,6 +270,10 @@ void Window::prepareFrame() {
     ImGui::NewFrame();
 }
 
-void Window::renderFrame(const std::function<void()>& render) {
-    gpuState.renderFrame(clearColor, render);
+HWND Window::getHWND() const {
+    return hwnd;
+}
+
+WNDCLASSEXW Window::getWc() const {
+    return wc;
 }

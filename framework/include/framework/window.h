@@ -18,7 +18,7 @@ DISABLE_WARNINGS_POP()
 
 class Window {
 public:
-	Window(std::string_view title, const glm::ivec2& windowSize);
+	Window(std::string_view title, const glm::ivec2& windowSize, GPUState* gpuStatePtr);
 	~Window();
 
 	[[nodiscard]] bool shouldClose() const; // Whether window should close (user clicked the close button).
@@ -52,13 +52,11 @@ public:
 	[[nodiscard]] float getDpiScalingFactor() const;
 
 	static void prepareFrame();
-	void renderFrame(const std::function<void()>& render);
 
 private:
 	WNDCLASSEXW wc;
 	HWND hwnd;
 	bool done = false;
-	ImVec4 clearColor = ImVec4(0.29f, 0.29f, 0.29f, 1.00f);
 	float m_dpiScalingFactor = 1.0f;
 
 	static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -67,7 +65,6 @@ private:
 
 public:
 	glm::ivec2 m_windowSize;
-	GPUState gpuState;
 
 	std::vector<KeyCallback> m_keyCallbacks;
 	std::vector<CharCallback> m_charCallbacks;
@@ -75,4 +72,7 @@ public:
 	std::vector<ScrollCallback> m_scrollCallbacks;
 	std::vector<MouseMoveCallback> m_mouseMoveCallbacks;
 	std::vector<WindowResizeCallback> m_windowResizeCallbacks;
+
+	[[nodiscard]] HWND getHWND() const;
+	[[nodiscard]] WNDCLASSEXW getWc() const;
 };
