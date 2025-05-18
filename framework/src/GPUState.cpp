@@ -1,5 +1,7 @@
 #include "GPUState.h"
 
+#include <d3dx12.h>
+#include <mesh.h>
 #include <imgui/imgui_impl_dx12.h>
 
 #ifdef _DEBUG
@@ -144,6 +146,8 @@ void GPUState::cleanupDevice() {
     srvDescHeapAlloc.Destroy();
     if(fence) fence.Reset();
     if(fenceEvent) { CloseHandle(fenceEvent); fenceEvent = nullptr; }
+    if(pipeline) pipeline.Reset();
+    if(rootSignature) rootSignature.Reset();
     if(device) device.Reset();
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -255,4 +259,40 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     commandQueue->Signal(fence.Get(), fenceValue);
     fenceLastSignaledValue = fenceValue;
     frameCtx->fenceValue = fenceValue;
+}
+
+void GPUState::createPipeline(const Shader& shaders) {
+    device->CreateRootSignature(0, shaders.getSignature()->GetBufferPointer(), shaders.getSignature()->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
+
+    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+        { "POSITION",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, position),         D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "NORMAL",         0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, normal),           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BONEINDICES",    0, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, boneIndices),      D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BONEWEIGHTS",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, boneWeights),      D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "DISPLACEMENT",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, displacement),     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BASEBONEINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, baseBoneIndices0), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BASEBONEINDICES", 1, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, baseBoneIndices1), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BASEBONEINDICES", 2, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, baseBoneIndices2), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BASEBONEWEIGHTS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, baseBoneWeights0), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BASEBONEWEIGHTS", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, baseBoneWeights1), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BASEBONEWEIGHTS", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, baseBoneWeights2), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "BARYCOORDS",      0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, baryCoords),       D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+    };
+
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+    psoDesc.pRootSignature = rootSignature.Get();
+    psoDesc.VS = { shaders.getVertexShaderBlob()->GetBufferPointer(), shaders.getVertexShaderBlob()->GetBufferSize() };
+    psoDesc.PS = { shaders.getPixelShaderBlob()->GetBufferPointer(), shaders.getPixelShaderBlob()->GetBufferSize() };
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState.DepthEnable = FALSE;
+    psoDesc.DepthStencilState.StencilEnable = FALSE;
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 1;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.SampleDesc.Count = 1;
+
+    device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline));
 }

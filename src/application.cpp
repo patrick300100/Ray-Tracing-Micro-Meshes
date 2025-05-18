@@ -33,6 +33,8 @@ public:
         } catch (ShaderLoadingException& e) {
             std::cerr << e.what() << std::endl;
         }
+
+        gpuState.createPipeline(skinningShader);
     }
 
     void update() {

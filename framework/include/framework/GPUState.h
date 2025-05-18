@@ -5,6 +5,7 @@
 #include <imgui/imgui.h>
 #include <wrl/client.h>
 #include <functional>
+#include "shader.h"
 
 struct FrameContext {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator;
@@ -81,6 +82,9 @@ class GPUState {
     Microsoft::WRL::ComPtr<ID3D12Resource> mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
     D3D12_CPU_DESCRIPTOR_HANDLE mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
 
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
+
 public:
     ~GPUState();
 
@@ -97,4 +101,6 @@ public:
     [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
     void renderFrame(const ImVec4& clearColor, const std::function<void()>& render);
+
+    void createPipeline(const Shader& shaders);
 };

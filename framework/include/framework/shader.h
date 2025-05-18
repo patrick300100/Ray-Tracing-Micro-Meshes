@@ -13,8 +13,10 @@ class Shader {
     Microsoft::WRL::ComPtr<ID3DBlob> vertexShaderBlob;
     Microsoft::WRL::ComPtr<ID3DBlob> pixelShaderBlob;
 
+    Microsoft::WRL::ComPtr<ID3DBlob> signature;
+
     friend class ShaderBuilder;
-    Shader(Microsoft::WRL::ComPtr<ID3DBlob> vBlob, Microsoft::WRL::ComPtr<ID3DBlob> pBlob);
+    Shader(Microsoft::WRL::ComPtr<ID3DBlob> vBlob, Microsoft::WRL::ComPtr<ID3DBlob> pBlob, Microsoft::WRL::ComPtr<ID3DBlob> sig);
 
 public:
     Shader() = default;
@@ -26,10 +28,12 @@ public:
 
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3DBlob> getVertexShaderBlob() const;
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3DBlob> getPixelShaderBlob() const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID3DBlob> getSignature() const;
 };
 
 class ShaderBuilder {
     std::vector<Microsoft::WRL::ComPtr<ID3DBlob>> shaders;
+    int nConstBuffers = 0; //Total number of constant buffers used in shaders
 
     ShaderBuilder& addStage(const LPCWSTR& shaderFile, const LPCSTR& entryFunction, const LPCSTR& shaderModel);
 
@@ -41,5 +45,6 @@ public:
 
     ShaderBuilder& addVS(const LPCWSTR& shaderFile);
     ShaderBuilder& addPS(const LPCWSTR& shaderFile);
+    ShaderBuilder& addConstantBuffers(int nBuffers);
     Shader build();
 };
