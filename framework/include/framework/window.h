@@ -76,3 +76,8 @@ public:
 	[[nodiscard]] HWND getHWND() const;
 	[[nodiscard]] WNDCLASSEXW getWc() const;
 };
+
+struct WindowData {
+	Window* window;
+	GPUState* gpuState;
+};

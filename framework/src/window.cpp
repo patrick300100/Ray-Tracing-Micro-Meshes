@@ -17,7 +17,7 @@ std::wstring Window::convertToWString(const std::string_view str) {
     return wstr;
 }
 
-Window::Window(std::string_view title, const glm::ivec2& windowSize, GPUState* gpuStatePtr) {
+Window::Window(std::string_view title, const glm::ivec2& windowSize, GPUState* gpuStatePtr): m_windowSize(windowSize) {
     // std::string_view does not guarantee that the string contains a terminator character.
     const auto titleString = convertToWString(title);
 
@@ -44,8 +44,8 @@ Window::Window(std::string_view title, const glm::ivec2& windowSize, GPUState* g
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(hwnd);
 
-    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(gpuStatePtr));
+    auto* data = new WindowData{this, gpuStatePtr};
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(data));
 }
 
 Window::~Window() {
@@ -174,11 +174,8 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
 
-    auto* pWindow = reinterpret_cast<Window*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-    if(!pWindow) return DefWindowProcW(hWnd, msg, wParam, lParam);
-
-    auto* gpuState = reinterpret_cast<GPUState*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
-    if(!gpuState) return DefWindowProcW(hWnd, msg, wParam, lParam);
+    auto* windowData = reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+    if(!windowData) return DefWindowProcW(hWnd, msg, wParam, lParam);
 
     const ImGuiIO& io = ImGui::GetIO();
 
@@ -193,7 +190,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             int scancode = 0; // Optional: can use MapVirtualKey if needed
             int mods = 0;     // Optional: get with GetKeyState(VK_SHIFT), etc.
 
-            for(const auto& cb : pWindow->m_keyCallbacks) cb(key, scancode, action, mods);
+            for(const auto& cb : windowData->window->m_keyCallbacks) cb(key, scancode, action, mods);
             break;
         }
 
@@ -202,7 +199,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             if(io.WantCaptureKeyboard) break;
 
             auto codepoint = static_cast<unsigned>(wParam);
-            for(const auto& cb : pWindow->m_charCallbacks) cb(codepoint);
+            for(const auto& cb : windowData->window->m_charCallbacks) cb(codepoint);
             break;
         }
 
@@ -217,7 +214,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             int action = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) ? GLFW_PRESS : GLFW_RELEASE;
             int mods = 0; // Optional modifier keys
 
-            for(const auto& cb : pWindow->m_mouseButtonCallbacks) cb(button, action, mods);
+            for(const auto& cb : windowData->window->m_mouseButtonCallbacks) cb(button, action, mods);
             break;
         }
 
@@ -227,9 +224,9 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
-            glm::vec2 pos = glm::vec2(x, pWindow->m_windowSize.y - 1 - y);
+            glm::vec2 pos = glm::vec2(x, windowData->window->m_windowSize.y - 1 - y);
 
-            for(const auto& cb : pWindow->m_mouseMoveCallbacks) cb(pos);
+            for(const auto& cb : windowData->window->m_mouseMoveCallbacks) cb(pos);
             break;
         }
 
@@ -240,18 +237,22 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             float deltaY = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
             glm::vec2 offset = glm::vec2(0, deltaY);
 
-            for(const auto& cb : pWindow->m_scrollCallbacks) cb(offset);
+            for(const auto& cb : windowData->window->m_scrollCallbacks) cb(offset);
             break;
         }
         case WM_SIZE:
-            if(gpuState->get_device() != nullptr && wParam != SIZE_MINIMIZED) {
-                gpuState->waitForLastSubmittedFrame();
-                gpuState->cleanupRenderTarget();
-                HRESULT result = gpuState->get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+            if(windowData->gpuState->get_device() != nullptr && wParam != SIZE_MINIMIZED) {
+                windowData->gpuState->waitForLastSubmittedFrame();
+                windowData->gpuState->cleanupRenderTarget();
+                HRESULT result = windowData->gpuState->get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
                 assert(SUCCEEDED(result) && "Failed to resize swapchain.");
-                gpuState->createRenderTarget();
+                windowData->gpuState->createRenderTarget();
             }
             return 0;
+        case WM_NCDESTROY:
+            delete reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+            SetWindowLongPtr(hWnd, GWLP_USERDATA, 0);
+            break;
         case WM_SYSCOMMAND:
             if((wParam & 0xfff0) == SC_KEYMENU) return 0; // Disable ALT application menu
             break;
