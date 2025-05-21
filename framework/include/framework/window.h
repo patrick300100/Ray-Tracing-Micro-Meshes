@@ -18,7 +18,7 @@ DISABLE_WARNINGS_POP()
 
 class Window {
 public:
-	Window(std::string_view title, const glm::ivec2& windowSize, GPUState* gpuStatePtr);
+	Window(std::string_view title, const glm::ivec2& wSize, GPUState* gpuStatePtr);
 	~Window();
 
 	[[nodiscard]] bool shouldClose() const; // Whether window should close (user clicked the close button).
@@ -64,7 +64,7 @@ private:
 	static std::wstring convertToWString(std::string_view str);
 
 public:
-	glm::ivec2 m_windowSize;
+	glm::ivec2 windowSize;
 
 	std::vector<KeyCallback> m_keyCallbacks;
 	std::vector<CharCallback> m_charCallbacks;

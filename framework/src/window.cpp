@@ -17,14 +17,14 @@ std::wstring Window::convertToWString(const std::string_view str) {
     return wstr;
 }
 
-Window::Window(std::string_view title, const glm::ivec2& windowSize, GPUState* gpuStatePtr): m_windowSize(windowSize) {
+Window::Window(std::string_view title, const glm::ivec2& wSize, GPUState* gpuStatePtr): windowSize(wSize) {
     // std::string_view does not guarantee that the string contains a terminator character.
     const auto titleString = convertToWString(title);
 
     // Create application window
     wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"MicroMeshWindow", nullptr };
     RegisterClassExW(&wc);
-    hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), WS_OVERLAPPEDWINDOW, 100, 100, windowSize.x, windowSize.y, nullptr, nullptr, wc.hInstance, nullptr);
+    hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), WS_OVERLAPPEDWINDOW, 100, 100, wSize.x, wSize.y, nullptr, nullptr, wc.hInstance, nullptr);
 
     // Show the window
     ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -75,27 +75,27 @@ void Window::updateInput() {
 
 void Window::renderToImage(const std::filesystem::path& filePath, const bool flipY) const {
     std::vector <GLubyte> pixels;
-    pixels.reserve (4 * m_windowSize.x * m_windowSize.y);
+    pixels.reserve (4 * windowSize.x * windowSize.y);
 
-    glReadPixels(0, 0, m_windowSize.x, m_windowSize.y, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glReadPixels(0, 0, windowSize.x, windowSize.y, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
 
     std::string filePathString = filePath.string();
 
     // flips Y axis
     if(flipY) {
         // swap entire lines (if height is odd will not touch middle line)
-        for(int line = 0; line != m_windowSize.y/2; ++line) {
-               std::swap_ranges(pixels.begin() + 4 * m_windowSize.x * line,
-                pixels.begin() + 4 * m_windowSize.x * (line + 1),
-                pixels.begin() + 4 * m_windowSize.x * (m_windowSize.y - line - 1));
+        for(int line = 0; line != windowSize.y/2; ++line) {
+               std::swap_ranges(pixels.begin() + 4 * windowSize.x * line,
+                pixels.begin() + 4 * windowSize.x * (line + 1),
+                pixels.begin() + 4 * windowSize.x * (windowSize.y - line - 1));
         }
     }
 
     if((filePath.extension()).compare(".bmp") == 0) {
-        stbi_write_bmp(filePathString.c_str(), m_windowSize.x, m_windowSize.y, 4, pixels.data());
+        stbi_write_bmp(filePathString.c_str(), windowSize.x, windowSize.y, 4, pixels.data());
     }
     else if((filePath.extension()).compare(".png") == 0) {
-        stbi_write_png(filePathString.c_str(), m_windowSize.x, m_windowSize.y, 4, pixels.data(), 4*m_windowSize.x);
+        stbi_write_png(filePathString.c_str(), windowSize.x, windowSize.y, 4, pixels.data(), 4*windowSize.x);
     }
 }
 
@@ -143,20 +143,20 @@ glm::vec2 Window::getCursorPos() const{
     POINT p;
     GetCursorPos(&p);
     ScreenToClient(hwnd, &p);
-    return glm::vec2(static_cast<float>(p.x), static_cast<float>(m_windowSize.y - 1 - p.y));
+    return glm::vec2(static_cast<float>(p.x), static_cast<float>(windowSize.y - 1 - p.y));
 }
 
 glm::vec2 Window::getNormalizedCursorPos() const {
-    return getCursorPos() / glm::vec2(m_windowSize);
+    return getCursorPos() / glm::vec2(windowSize);
 }
 
 glm::ivec2 Window::getWindowSize() const {
-    return m_windowSize;
+    return windowSize;
 }
 
 float Window::getAspectRatio() const {
-    if(m_windowSize.x == 0 || m_windowSize.y == 0) return 1.0f;
-    return float(m_windowSize.x) / float(m_windowSize.y);
+    if(windowSize.x == 0 || windowSize.y == 0) return 1.0f;
+    return float(windowSize.x) / float(windowSize.y);
 }
 
 float Window::getDpiScalingFactor() const {
@@ -224,7 +224,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
-            glm::vec2 pos = glm::vec2(x, windowData->window->m_windowSize.y - 1 - y);
+            glm::vec2 pos = glm::vec2(x, windowData->window->windowSize.y - 1 - y);
 
             for(const auto& cb : windowData->window->m_mouseMoveCallbacks) cb(pos);
             break;
