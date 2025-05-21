@@ -28,7 +28,7 @@ public:
         );
     }
 
-    void copyDataIntoBuffer(std::vector<T> data) {
+    void copyDataIntoBuffer(const std::vector<T>& data) {
         void* dataPtr = nullptr;
         buffer->Map(0, nullptr, &dataPtr);
         memcpy(dataPtr, data.data(), data.size() * sizeof(T));
