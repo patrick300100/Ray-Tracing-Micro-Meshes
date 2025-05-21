@@ -214,7 +214,7 @@ void GPUState::initImGui() const {
     ImGui_ImplDX12_Init(device.Get(), APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap.Get(), srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
 }
 
-void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render) {
+void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize) {
     FrameContext* frameCtx = waitForNextFrameResources();
     const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
     frameCtx->commandAllocator->Reset();
@@ -229,12 +229,29 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     commandList->Reset(frameCtx->commandAllocator.Get(), nullptr);
     commandList->ResourceBarrier(1, &barrier);
 
+    D3D12_VIEWPORT viewport = {};
+    viewport.TopLeftX = 0;
+    viewport.TopLeftY = 0;
+    viewport.Width = static_cast<float>(windowSize.x);
+    viewport.Height = static_cast<float>(windowSize.y);
+    viewport.MinDepth = 0.1f;
+    viewport.MaxDepth = 1000.0f;
+    commandList->RSSetViewports(1, &viewport);
+
+    D3D12_RECT scissorRect = {};
+    scissorRect.left = 0;
+    scissorRect.top = 0;
+    scissorRect.right = windowSize.x;
+    scissorRect.bottom = windowSize.y;
+    commandList->RSSetScissorRects(1, &scissorRect);
+
     const float clear_color_with_alpha[4] = { clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w };
     commandList->ClearRenderTargetView(mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
     commandList->OMSetRenderTargets(1, &mainRenderTargetDescriptor[backBufferIdx], FALSE, nullptr);
 
     ID3D12DescriptorHeap* heap[] = { srvDescHeap.Get() };
     commandList->SetDescriptorHeaps(1, heap);
+    commandList->SetGraphicsRootSignature(rootSignature.Get());
 
     render(); //Render mesh and other drawable objects
 
@@ -295,4 +312,16 @@ void GPUState::createPipeline(const Shader& shaders) {
     psoDesc.SampleDesc.Count = 1;
 
     device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline));
+}
+
+void GPUState::drawMesh(const D3D12_VERTEX_BUFFER_VIEW vbv, const D3D12_INDEX_BUFFER_VIEW ibv, const UINT nIndices) const {
+    commandList->SetPipelineState(pipeline.Get());
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &vbv);
+    commandList->IASetIndexBuffer(&ibv);
+    commandList->DrawIndexedInstanced(nIndices, 1, 0, 0, 0);
+}
+
+void GPUState::setConstantBuffer(const UINT index, const Microsoft::WRL::ComPtr<ID3D12Resource>& bufferPtr) const {
+    commandList->SetGraphicsRootConstantBufferView(index, bufferPtr->GetGPUVirtualAddress());
 }

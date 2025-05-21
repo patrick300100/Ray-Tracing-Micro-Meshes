@@ -1,6 +1,10 @@
 #include "GPUMesh.h"
+
+#include <d3dx12.h>
 #include <framework/disable_all_warnings.h>
 #include <framework/TinyGLTFLoader.h>
+#include "framework/CreateBuffer.h"
+
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.inl>
 #include "mesh_io_gltf.h"
@@ -9,106 +13,56 @@ DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh): wfDraw(cpuMesh), cpuMesh(cpuMesh) {
-    glCreateBuffers(1, &uboBoneMatrices);
-    glNamedBufferData(uboBoneMatrices, sizeof(glm::mat4) * 50, nullptr, GL_STREAM_DRAW);
-
+GPUMesh::GPUMesh(const Mesh& cpuMesh, const Microsoft::WRL::ComPtr<ID3D12Device>& device): cpuMesh(cpuMesh) {
     const auto [vData, iData] = cpuMesh.allTriangles();
 
-    glCreateBuffers(1, &ibo);
-    glNamedBufferStorage(ibo, static_cast<GLsizeiptr>(iData.size() * sizeof(decltype(iData)::value_type)), iData.data(), 0);
+    //Create vertex buffer
+    {
+        CreateBuffer<Vertex> vBuffer(device, vData.size());
+        vBuffer.copyDataIntoBuffer(vData);
 
-    glCreateBuffers(1, &vbo);
-    glNamedBufferStorage(vbo, static_cast<GLsizeiptr>(vData.size() * sizeof(decltype(vData)::value_type)), vData.data(), 0);
+        vertexBuffer = std::move(vBuffer.getBuffer());
+        vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+        vertexBufferView.StrideInBytes = sizeof(Vertex);
+        vertexBufferView.SizeInBytes = vData.size() * sizeof(Vertex);
+    }
 
-    glCreateVertexArrays(1, &vao);
+    //Create index buffer
+    {
+        CreateBuffer<glm::uvec3> iBuffer(device, iData.size());
+        iBuffer.copyDataIntoBuffer(iData);
 
-    glVertexArrayElementBuffer(vao, ibo);
+        indexBuffer = std::move(iBuffer.getBuffer());
+        indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
+        indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+        indexBufferView.SizeInBytes = iData.size() * sizeof(glm::uvec3);
+    }
 
-    glVertexArrayVertexBuffer(vao, 0, vbo, 0, sizeof(Vertex));
-
-    glEnableVertexArrayAttrib(vao, 0);
-    glEnableVertexArrayAttrib(vao, 1);
-    glEnableVertexArrayAttrib(vao, 2);
-    glEnableVertexArrayAttrib(vao, 3);
-    glEnableVertexArrayAttrib(vao, 4);
-    glEnableVertexArrayAttrib(vao, 5);
-    glEnableVertexArrayAttrib(vao, 6);
-    glEnableVertexArrayAttrib(vao, 7);
-    glEnableVertexArrayAttrib(vao, 8);
-    glEnableVertexArrayAttrib(vao, 9);
-    glEnableVertexArrayAttrib(vao, 10);
-    glEnableVertexArrayAttrib(vao, 11);
-
-    glVertexArrayAttribFormat(vao, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
-    glVertexArrayAttribFormat(vao, 1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, normal));
-    glVertexArrayAttribIFormat(vao, 2, 4, GL_INT, offsetof(Vertex, boneIndices));
-    glVertexArrayAttribFormat(vao, 3, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
-    glVertexArrayAttribFormat(vao, 4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
-    glVertexArrayAttribIFormat(vao, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
-    glVertexArrayAttribIFormat(vao, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
-    glVertexArrayAttribIFormat(vao, 7, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
-    glVertexArrayAttribFormat(vao, 8, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights0));
-    glVertexArrayAttribFormat(vao, 9, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights1));
-    glVertexArrayAttribFormat(vao, 10, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, baseBoneWeights2));
-    glVertexArrayAttribFormat(vao, 11, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, baryCoords));
-
-    glVertexArrayAttribBinding(vao, 0, 0);
-    glVertexArrayAttribBinding(vao, 1, 0);
-    glVertexArrayAttribBinding(vao, 2, 0);
-    glVertexArrayAttribBinding(vao, 3, 0);
-    glVertexArrayAttribBinding(vao, 4, 0);
-    glVertexArrayAttribBinding(vao, 5, 0);
-    glVertexArrayAttribBinding(vao, 6, 0);
-    glVertexArrayAttribBinding(vao, 7, 0);
-    glVertexArrayAttribBinding(vao, 8, 0);
-    glVertexArrayAttribBinding(vao, 9, 0);
-    glVertexArrayAttribBinding(vao, 10, 0);
-    glVertexArrayAttribBinding(vao, 11, 0);
-
-    numIndices = static_cast<GLsizei>(3 * iData.size());
+    nIndices = 3 * iData.size();
 }
 
 GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
-    numIndices(other.numIndices),
-    ibo(other.ibo),
-    vbo(other.vbo),
-    vao(other.vao),
-    uboBoneMatrices(other.uboBoneMatrices),
-    wfDraw(std::move(other.wfDraw)),
+    //wfDraw(std::move(other.wfDraw)),
+    vertexBufferView(other.vertexBufferView),
+    indexBufferView(other.indexBufferView),
+    nIndices(other.nIndices),
     cpuMesh(std::move(other.cpuMesh))
 {
-    other.numIndices = 0;
-    other.ibo = 0;
-    other.vbo = 0;
-    other.vao = 0;
-    other.uboBoneMatrices = 0;
-}
-
-GPUMesh::~GPUMesh() {
-    freeGpuMemory();
 }
 
 GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     if(this != &other) {
-        freeGpuMemory();
-
-        wfDraw = std::move(other.wfDraw);
+        //wfDraw = std::move(other.wfDraw);
         cpuMesh = std::move(other.cpuMesh);
-
-        std::swap(ibo, other.ibo);
-        std::swap(vbo, other.vbo);
-        std::swap(vao, other.vao);
-        std::swap(uboBoneMatrices, other.uboBoneMatrices);
-
-        numIndices = other.numIndices;
-        other.numIndices = 0;
+        vertexBufferView = other.vertexBufferView;
+        indexBufferView = other.indexBufferView;
+        nIndices = other.nIndices;
     }
 
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath) {
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device>& device) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
 
     GLTFReadInfo read_micromesh;
@@ -122,29 +76,9 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
 
     std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
-    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh); }
+    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device); }
 
     return gpuMeshes;
-}
-
-void GPUMesh::draw(std::vector<glm::mat4> boneMatrices) const {
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboBoneMatrices);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(boneMatrices.size() * sizeof(glm::mat4)), boneMatrices.data());
-
-    glBindVertexArray(vao);
-    glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, nullptr);
-}
-
-void GPUMesh::freeGpuMemory() {
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    glDeleteBuffers(1, &ibo);
-    glDeleteBuffers(1, &uboBoneMatrices);
-
-    vao = 0;
-    vbo = 0;
-    ibo = 0;
-    uboBoneMatrices = 0;
 }
 
 void GPUMesh::drawWireframe(const glm::mat4& mvp, const float displacementScale) const {
@@ -152,9 +86,21 @@ void GPUMesh::drawWireframe(const glm::mat4& mvp, const float displacementScale)
     glUniform1f(1, displacementScale);
     glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.235f, 0.235f, 0.235f, 1.0f)));
 
-    wfDraw.drawBaseEdges();
+    //wfDraw.drawBaseEdges();
 
     glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.435f, 0.435f, 0.435f, 0.5f)));
 
-    wfDraw.drawMicroEdges();
+    //wfDraw.drawMicroEdges();
+}
+
+D3D12_VERTEX_BUFFER_VIEW GPUMesh::getVertexBufferView() const {
+    return vertexBufferView;
+}
+
+D3D12_INDEX_BUFFER_VIEW GPUMesh::getIndexBufferView() const {
+    return indexBufferView;
+}
+
+UINT GPUMesh::getIndexCount() const {
+    return nIndices;
 }

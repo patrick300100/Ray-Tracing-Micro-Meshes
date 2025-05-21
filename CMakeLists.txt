@@ -28,13 +28,13 @@ endif()
 # We would like to copy the files when they changed. Even if no *.cpp files were modified (and
 # thus no build is triggered). We tell CMake that the executable depends on the shader files in
 # the build directory. We also tell it how to generate those files (by copying them from the
-# shaders folder in this directory). The gather all glsl files in the shaders folder when CMake
+# shaders folder in this directory). The gather all hlsl files in the shaders folder when CMake
 # is configured. So if you were to add a shader file then you need to configure CMake again.
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shaders/")
 
 set(Micro_Meshes_shader_copies "")
-# List all *.glsl files in the shaders folder
-file(GLOB Micro_Meshes_shader_sources "${CMAKE_CURRENT_LIST_DIR}/shaders/*.glsl")
+# List all *.hlsl files in the shaders folder
+file(GLOB Micro_Meshes_shader_sources "${CMAKE_CURRENT_LIST_DIR}/shaders/*.hlsl")
 foreach(shader_file IN LISTS Micro_Meshes_shader_sources)
 	get_filename_component(file_name ${shader_file} NAME)
 	message("shader_file: ${file_name}")

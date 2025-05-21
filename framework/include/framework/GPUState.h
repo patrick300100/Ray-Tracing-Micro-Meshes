@@ -5,6 +5,8 @@
 #include <imgui/imgui.h>
 #include <wrl/client.h>
 #include <functional>
+#include <glm/vec2.hpp>
+
 #include "shader.h"
 
 struct FrameContext {
@@ -100,7 +102,11 @@ public:
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Device> get_device() const;
     [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
-    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render);
+    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize);
 
     void createPipeline(const Shader& shaders);
+
+    void drawMesh(D3D12_VERTEX_BUFFER_VIEW vbv, D3D12_INDEX_BUFFER_VIEW ibv, UINT nIndices) const;
+
+    void setConstantBuffer(UINT index, const Microsoft::WRL::ComPtr<ID3D12Resource>& bufferPtr) const;
 };
