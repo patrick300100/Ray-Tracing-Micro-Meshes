@@ -68,6 +68,7 @@ class GPUState {
 
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvDescHeap;
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvDescHeap;
+    Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvHeap;
     ExampleDescriptorHeapAllocator srvDescHeapAlloc{};
 
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue;
@@ -87,6 +88,8 @@ class GPUState {
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 
+    Microsoft::WRL::ComPtr<ID3D12Resource> depthStencilBuffer;
+
 public:
     ~GPUState();
 
@@ -104,6 +107,7 @@ public:
 
     void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize);
 
+    void createDepthBuffer();
     void createPipeline(const Shader& shaders);
 
     void drawMesh(D3D12_VERTEX_BUFFER_VIEW vbv, D3D12_INDEX_BUFFER_VIEW ibv, UINT nIndices) const;
