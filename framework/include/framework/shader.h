@@ -1,62 +1,50 @@
 #pragma once
-#include "disable_all_warnings.h"
-#include "opengl_includes.h"
-DISABLE_WARNINGS_PUSH()
-#include <glm/mat3x3.hpp>
-#include <glm/mat4x4.hpp>
-#include <glm/vec2.hpp>
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
-DISABLE_WARNINGS_POP()
-#include <exception>
+
+#include <d3dcommon.h>
+#include <wrl/client.h>
 #include <filesystem>
 #include <vector>
 
-struct ShaderLoadingException : public std::runtime_error {
+struct ShaderLoadingException : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
 class Shader {
-public:
-    Shader();
-    Shader(const Shader&) = delete;
-    Shader(Shader&&);
-    ~Shader();
+    Microsoft::WRL::ComPtr<ID3DBlob> vertexShaderBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> pixelShaderBlob;
 
-    Shader& operator=(Shader&&);
+    Microsoft::WRL::ComPtr<ID3DBlob> signature;
 
-    // ... Feel free to add more methods here (e.g. for setting uniforms or keeping track of texture units) ...
-    void bind() const;
-
-    // Query an attribute location by its name in the shader
-    GLuint getAttributeLocation(const std::string& name) const;
-    
-    // Query a uniform location by its name in the shader
-    GLint getUniformLocation(const std::string& name) const;
-
-private:
     friend class ShaderBuilder;
-    Shader(GLuint program);
+    Shader(Microsoft::WRL::ComPtr<ID3DBlob> vBlob, Microsoft::WRL::ComPtr<ID3DBlob> pBlob, Microsoft::WRL::ComPtr<ID3DBlob> sig);
 
-private:
-    GLuint m_program;
+public:
+    Shader() = default;
+    Shader(const Shader&) = delete;
+    Shader(Shader&&) noexcept;
+    ~Shader() = default;
+
+    Shader& operator=(Shader&&) noexcept;
+
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID3DBlob> getVertexShaderBlob() const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID3DBlob> getPixelShaderBlob() const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID3DBlob> getSignature() const;
 };
 
 class ShaderBuilder {
+    std::vector<Microsoft::WRL::ComPtr<ID3DBlob>> shaders;
+    int nConstBuffers = 0; //Total number of constant buffers used in shaders
+
+    ShaderBuilder& addStage(const LPCWSTR& shaderFile, const LPCSTR& entryFunction, const LPCSTR& shaderModel);
+
 public:
     ShaderBuilder() = default;
     ShaderBuilder(const ShaderBuilder&) = delete;
     ShaderBuilder(ShaderBuilder&&) = default;
-    ~ShaderBuilder();
+    ~ShaderBuilder() = default;
 
-    ShaderBuilder& addStage(GLuint shaderStage, std::filesystem::path shaderFile);
-    ShaderBuilder& addVS(const std::filesystem::path& shaderFile);
-    ShaderBuilder& addFS(const std::filesystem::path& shaderFile);
+    ShaderBuilder& addVS(const LPCWSTR& shaderFile);
+    ShaderBuilder& addPS(const LPCWSTR& shaderFile);
+    ShaderBuilder& addConstantBuffers(int nBuffers);
     Shader build();
-
-private:
-    void freeShaders();
-
-private:
-    std::vector<GLuint> m_shaders;
 };

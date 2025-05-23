@@ -1,447 +1,280 @@
 #include "window.h"
 #include <imgui/imgui.h>
-#include <imgui/imgui_impl_glfw.h>
-#include <imgui/imgui_impl_opengl2.h>
 #undef IMGUI_IMPL_OPENGL_LOADER_GLEW
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD 1
-#include <imgui/imgui_impl_opengl3.h>
-#include <iostream>
+#include <imgui/imgui_impl_win32.h>
+#include <imgui/imgui_impl_dx12.h>
+#include <d3d12.h>
+#include <dxgi1_4.h>
+#include <windowsx.h>
+#include <glm/vec2.hpp>
 #include <stb/stb_image_write.h>
 
-static void glfwErrorCallback(int error, const char* description)
-{
-    std::cerr << "GLFW error code: " << error << std::endl;
-    std::cerr << description << std::endl;
-    exit(1);
+std::wstring Window::convertToWString(const std::string_view str) {
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), nullptr, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), wstr.data(), size_needed);
+    return wstr;
 }
 
-#ifdef GL_DEBUG_SEVERITY_NOTIFICATION
-// OpenGL debug callback
-void APIENTRY glDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
-{
-    if (severity != GL_DEBUG_SEVERITY_NOTIFICATION && type != GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR) {
-        std::cerr << "OpenGL: " << message << std::endl;
-    }
-}
-#endif
-
-Window::Window(std::string_view title, const glm::ivec2& windowSize, OpenGLVersion glVersion, bool presentable)
-    : m_presentable(presentable), m_glVersion(glVersion)
-{
-    glfwSetErrorCallback(glfwErrorCallback);
-    if (!glfwInit()) {
-        std::cerr << "Could not initialize GLFW" << std::endl;
-        exit(1);
-    }
-
-    if (m_presentable) {
-        glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-
-        if (glVersion == OpenGLVersion::GL3) {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        } else if (glVersion == OpenGLVersion::GL41) {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-            glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-        } else if (glVersion == OpenGLVersion::GL45) {
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-            glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        }
-#ifndef NDEBUG // Automatically defined by CMake when compiling in Release/MinSizeRel mode.
-        glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
-#endif
-
-        // HighDPI awareness
-        // https://decovar.dev/blog/2019/08/04/glfw-dear-imgui/#high-dpi
-#ifdef _WIN32
-        // if it's a HighDPI monitor, try to scale everything
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        float xscale, yscale;
-        glfwGetMonitorContentScale(monitor, &xscale, &yscale);
-        if (xscale > 1 || yscale > 1) {
-            m_dpiScalingFactor = xscale;
-            glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
-        }
-#elif __APPLE__
-        // to prevent 1200x800 from becoming 2400x1600
-        glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
-#endif
-    } else {
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-    }
-
+Window::Window(std::string_view title, const glm::ivec2& wSize, GPUState* gpuStatePtr): windowSize(wSize) {
     // std::string_view does not guarantee that the string contains a terminator character.
-    const std::string titleString { title };
-    m_pWindow = glfwCreateWindow(windowSize.x, windowSize.y, titleString.c_str(), nullptr, nullptr);
-    if (m_pWindow == nullptr) {
-        glfwTerminate();
-        std::cerr << "Could not create GLFW window" << std::endl;
-        exit(1);
-    }
-    glfwMakeContextCurrent(m_pWindow);
-    glfwSwapInterval(1); // Enable vsync. To disable vsync set this to 0.
+    const auto titleString = convertToWString(title);
 
-    float xScale, yScale;
-    glfwGetWindowContentScale(m_pWindow, &xScale, &yScale);
-    //std::cout << "Window content scale: " << xScale << ", " << yScale << std::endl;
+    // Create application window
+    wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"MicroMeshWindow", nullptr };
+    RegisterClassExW(&wc);
+    hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), WS_OVERLAPPEDWINDOW, 100, 100, wSize.x, wSize.y, nullptr, nullptr, wc.hInstance, nullptr);
 
-    glfwGetWindowSize(m_pWindow, &m_windowSize.x, &m_windowSize.y);
+    // Show the window
+    ShowWindow(hwnd, SW_SHOWDEFAULT);
+    UpdateWindow(hwnd);
 
-    if (m_presentable) {
-        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-            glfwTerminate();
-            std::cerr << "Could not initialize GLEW" << std::endl;
-            exit(1);
-        }
-        int glVersionMajor, glVersionMinor;
-        glGetIntegerv(GL_MAJOR_VERSION, &glVersionMajor);
-        glGetIntegerv(GL_MINOR_VERSION, &glVersionMinor);
-        std::cout << "Initialized OpenGL version " << glVersionMajor << "." << glVersionMinor << std::endl;
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
 
-        // NOTE(Mathijs): this is not supported on macOS since Apple can't be bothered to update
-        //  their OpenGL version past 4.1 which released in 2010!
-#if !defined(__APPLE__) && defined(GL_DEBUG_SEVERITY_NOTIFICATION) && !defined(NDEBUG)
-        // Custom debug message with breakpoints at the exact error. Only supported on OpenGL 4.3 and higher.
-        if (glVersionMajor > 4 || (glVersionMajor == 4 && glVersionMinor >= 3)) {
-            glDebugMessageCallback(glDebugCallback, nullptr);
-            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-        }
-#endif
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsLight();
 
-        // Setup Dear ImGui context.
-        ImGui::CreateContext();
-        ImGuiIO& io = ImGui::GetIO();
-        (void)io;
-        // Setup Dear ImGui style.
-        ImGui::StyleColorsDark();
-        // ImGui scaling for HighDPI displays
-        // https://twitter.com/ocornut/status/939547856171659264?lang=en
-        ImGuiStyle& style = ImGui::GetStyle();
-        style.ScaleAllSizes(m_dpiScalingFactor);
-        ImFontConfig cfg;
-        cfg.SizePixels = 13 * m_dpiScalingFactor;
-        io.Fonts->AddFontDefault(&cfg);
+    // Setup Platform/Renderer backends
+    ImGui_ImplWin32_Init(hwnd);
 
-        ImGui_ImplGlfw_InitForOpenGL(m_pWindow, true);
-        switch (glVersion) {
-        case OpenGLVersion::GL2: {
-            if (!ImGui_ImplOpenGL2_Init()) {
-                std::cerr << "Could not initialize imgui" << std::endl;
-                exit(1);
-            }
-        } break;
-        case OpenGLVersion::GL3: {
-        } break;
-        case OpenGLVersion::GL41: {
-            if (!ImGui_ImplOpenGL3_Init()) {
-                std::cerr << "Could not initialize imgui" << std::endl;
-                exit(1);
-            }
-        } break;
-        case OpenGLVersion::GL45: {
-            if (!ImGui_ImplOpenGL3_Init()) {
-                std::cerr << "Could not initialize imgui" << std::endl;
-                exit(1);
-            }
-        } break;
-        };
+    auto* data = new WindowData{this, gpuStatePtr};
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(data));
+}
 
-        glfwSetWindowUserPointer(m_pWindow, this);
+Window::~Window() {
+    ImGui_ImplDX12_Shutdown();
+    ImGui_ImplWin32_Shutdown();
+    ImGui::DestroyContext();
 
-        glfwSetKeyCallback(m_pWindow, keyCallback);
-        glfwSetCharCallback(m_pWindow, charCallback);
-        glfwSetMouseButtonCallback(m_pWindow, mouseButtonCallback);
-        glfwSetCursorPosCallback(m_pWindow, mouseMoveCallback);
-        glfwSetScrollCallback(m_pWindow, scrollCallback);
-        glfwSetWindowSizeCallback(m_pWindow, windowSizeCallback);
+    DestroyWindow(hwnd);
+    UnregisterClassW(wc.lpszClassName, wc.hInstance);
+}
+
+bool Window::shouldClose() const {
+    return !done;
+}
+
+void Window::updateInput() {
+    // Poll and handle messages (inputs, window resize, etc.)
+    // See the WndProc() function below for our to dispatch events to the Win32 backend.
+    MSG msg;
+    while(PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+
+        if(msg.message == WM_QUIT) done = true;
     }
 }
 
-Window::~Window()
-{
-    if (m_presentable) {
-        switch (m_glVersion) {
-        case OpenGLVersion::GL2: {
-            ImGui_ImplOpenGL2_Shutdown();
-        } break;
-        case OpenGLVersion::GL3: {
-        } break;
-        case OpenGLVersion::GL41: {
-            ImGui_ImplOpenGL3_Shutdown();
-        } break;
-        case OpenGLVersion::GL45: {
-            ImGui_ImplOpenGL3_Shutdown();
-        } break;
-        };
-        ImGui_ImplGlfw_Shutdown();
-        ImGui::DestroyContext();
+void Window::renderToImage(const std::filesystem::path& filePath, const bool flipY) const {
+    std::vector <GLubyte> pixels;
+    pixels.reserve (4 * windowSize.x * windowSize.y);
+
+    glReadPixels(0, 0, windowSize.x, windowSize.y, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    std::string filePathString = filePath.string();
+
+    // flips Y axis
+    if(flipY) {
+        // swap entire lines (if height is odd will not touch middle line)
+        for(int line = 0; line != windowSize.y/2; ++line) {
+               std::swap_ranges(pixels.begin() + 4 * windowSize.x * line,
+                pixels.begin() + 4 * windowSize.x * (line + 1),
+                pixels.begin() + 4 * windowSize.x * (windowSize.y - line - 1));
+        }
     }
 
-    glfwDestroyWindow(m_pWindow);
-    glfwTerminate();
-}
-
-void Window::close()
-{
-    glfwSetWindowShouldClose(m_pWindow, 1);
-}
-
-bool Window::shouldClose()
-{
-    return glfwWindowShouldClose(m_pWindow) != 0;
-}
-
-void Window::updateInput()
-{
-    glfwPollEvents();
-
-    if (m_presentable) {
-        // Start the Dear ImGui frame.
-        switch (m_glVersion) {
-        case OpenGLVersion::GL2: {
-            ImGui_ImplOpenGL2_NewFrame();
-        } break;
-        case OpenGLVersion::GL3:{
-        } break;
-        case OpenGLVersion::GL41: {
-            ImGui_ImplOpenGL3_NewFrame();
-        } break;
-        case OpenGLVersion::GL45: {
-            ImGui_ImplOpenGL3_NewFrame();
-        } break;
-        };
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+    if((filePath.extension()).compare(".bmp") == 0) {
+        stbi_write_bmp(filePathString.c_str(), windowSize.x, windowSize.y, 4, pixels.data());
+    }
+    else if((filePath.extension()).compare(".png") == 0) {
+        stbi_write_png(filePathString.c_str(), windowSize.x, windowSize.y, 4, pixels.data(), 4*windowSize.x);
     }
 }
 
-void Window::swapBuffers()
-{
-
-    if (m_presentable) {
-        // Rendering of Dear ImGui ui.
-        ImGui::Render();
-        switch (m_glVersion) {
-        case OpenGLVersion::GL2: {
-            ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-        } break;
-        case OpenGLVersion::GL3: {
-        } break;
-        case OpenGLVersion::GL41: {
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        } break;
-        case OpenGLVersion::GL45: {
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        } break;
-        };
-    }
-
-    glfwSwapBuffers(m_pWindow);
-}
-
-
-void Window::renderToImage (const std::filesystem::path& filePath, const bool flipY) {
-        std::vector <GLubyte> pixels;
-        pixels.reserve (4 * m_windowSize.x * m_windowSize.y);
-
-        glReadPixels(0, 0, m_windowSize.x, m_windowSize.y, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-
-        std::string filePathString = filePath.string();
-
-        // flips Y axis
-        if (flipY) {
-            // swap entire lines (if height is odd will not touch middle line)
-            for(int line = 0; line != m_windowSize.y/2; ++line) {
-                   std::swap_ranges(pixels.begin() + 4 * m_windowSize.x * line,
-                    pixels.begin() + 4 * m_windowSize.x * (line + 1),
-                    pixels.begin() + 4 * m_windowSize.x * (m_windowSize.y - line - 1));
-            }
-        }
-
-        if ((filePath.extension()).compare(".bmp") == 0) {
-            stbi_write_bmp(filePathString.c_str(), m_windowSize.x, m_windowSize.y, 4, pixels.data());
-        }
-        else if ((filePath.extension()).compare(".png") == 0) {
-            stbi_write_png(filePathString.c_str(), m_windowSize.x, m_windowSize.y, 4, pixels.data(), 4*m_windowSize.x);
-        }
-}
-
-
-void Window::registerKeyCallback(KeyCallback&& callback)
-{
+void Window::registerKeyCallback(KeyCallback&& callback) {
     m_keyCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerCharCallback(CharCallback&& callback)
-{
+void Window::registerCharCallback(CharCallback&& callback) {
     m_charCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerMouseButtonCallback(MouseButtonCallback&& callback)
-{
+void Window::registerMouseButtonCallback(MouseButtonCallback&& callback) {
     m_mouseButtonCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerScrollCallback(ScrollCallback&& callback)
-{
+void Window::registerScrollCallback(ScrollCallback&& callback) {
     m_scrollCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerWindowResizeCallback(WindowResizeCallback&& callback)
-{
+void Window::registerWindowResizeCallback(WindowResizeCallback&& callback) {
     m_windowResizeCallbacks.push_back(std::move(callback));
 }
 
-void Window::registerMouseMoveCallback(MouseMoveCallback&& callback)
-{
+void Window::registerMouseMoveCallback(MouseMoveCallback&& callback) {
     m_mouseMoveCallbacks.push_back(std::move(callback));
 }
 
-void Window::keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-    ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
-
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureKeyboard)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_keyCallbacks)
-        callback(key, scancode, action, mods);
+bool Window::isKeyPressed(int key) const {
+    return (GetAsyncKeyState(key) & 0x8000) != 0;
 }
 
-void Window::charCallback(GLFWwindow* window, unsigned unicodeCodePoint)
-{
-    ImGui_ImplGlfw_CharCallback(window, unicodeCodePoint);
-
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureKeyboard) {
-        return;
+bool Window::isMouseButtonPressed(int button) const {
+    int vkButton;
+    switch (button) {
+        case 0: vkButton = VK_LBUTTON; break;
+        case 1: vkButton = VK_RBUTTON; break;
+        case 2: vkButton = VK_MBUTTON; break;
+        default: return false;
     }
 
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_charCallbacks)
-        callback(unicodeCodePoint);
+    return (GetAsyncKeyState(vkButton) & 0x8000) != 0;
 }
 
-void Window::mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
-{
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureMouse)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_mouseButtonCallbacks)
-        callback(button, action, mods);
+glm::vec2 Window::getCursorPos() const{
+    POINT p;
+    GetCursorPos(&p);
+    ScreenToClient(hwnd, &p);
+    return glm::vec2(static_cast<float>(p.x), static_cast<float>(windowSize.y - 1 - p.y));
 }
 
-void Window::mouseMoveCallback(GLFWwindow* window, double xpos, double ypos)
-{
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureMouse)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_mouseMoveCallbacks)
-        callback(glm::vec2(xpos, pThisWindow->m_windowSize.y - 1 - ypos));
+glm::vec2 Window::getNormalizedCursorPos() const {
+    return getCursorPos() / glm::vec2(windowSize);
 }
 
-void Window::scrollCallback(GLFWwindow* window, double xoffset, double yoffset)
-{
-    // Ignore callbacks when the user is interacting with imgui.
-    if (ImGui::GetIO().WantCaptureMouse)
-        return;
-
-    const Window* pThisWindow = static_cast<const Window*>(glfwGetWindowUserPointer(window));
-    for (auto& callback : pThisWindow->m_scrollCallbacks)
-        callback(glm::vec2(xoffset, yoffset));
+glm::ivec2 Window::getWindowSize() const {
+    return windowSize;
 }
 
-void Window::windowSizeCallback(GLFWwindow* window, int width, int height)
-{
-    Window* pThisWindow = static_cast<Window*>(glfwGetWindowUserPointer(window));
-    pThisWindow->m_windowSize = glm::ivec2 { width, height };
-
-    for (const auto& callback : pThisWindow->m_windowResizeCallbacks)
-        callback(glm::ivec2(width, height));
+float Window::getAspectRatio() const {
+    if(windowSize.x == 0 || windowSize.y == 0) return 1.0f;
+    return float(windowSize.x) / float(windowSize.y);
 }
 
-bool Window::isKeyPressed(int key) const
-{
-    return glfwGetKey(m_pWindow, key) == GLFW_PRESS;
-}
-
-bool Window::isMouseButtonPressed(int button) const
-{
-    return glfwGetMouseButton(m_pWindow, button) == GLFW_PRESS;
-}
-
-glm::vec2 Window::getCursorPos() const
-{
-    double x, y;
-    glfwGetCursorPos(m_pWindow, &x, &y);
-    return glm::vec2(x, m_windowSize.y - 1 - y);
-}
-
-glm::vec2 Window::getNormalizedCursorPos() const
-{
-    return getCursorPos() / glm::vec2(m_windowSize);
-}
-
-glm::vec2 Window::getCursorPixel() const
-{
-    // https://stackoverflow.com/questions/45796287/screen-coordinates-to-world-coordinates
-    // Coordinates returned by glfwGetCursorPos are in screen coordinates which may not map 1:1 to
-    // pixel coordinates on some machines (e.g. with resolution scaling).
-    glm::ivec2 screenSize;
-    glfwGetWindowSize(m_pWindow, &screenSize.x, &screenSize.y);
-    glm::ivec2 framebufferSize;
-    glfwGetFramebufferSize(m_pWindow, &framebufferSize.x, &framebufferSize.y);
-
-    // double xpos, ypos;
-    // glfwGetCursorPos(m_pWindow, &xpos, &ypos);
-    // const glm::vec2 screenPos{ xpos, ypos };
-    const glm::vec2 screenPos = getCursorPos();
-    glm::vec2 pixelPos = screenPos / glm::vec2(screenSize) * glm::vec2(framebufferSize); // float division
-    pixelPos += glm::vec2(0.5f); // Shift to GL center convention.
-    return glm::vec2(pixelPos.x, pixelPos.y);
-}
-
-void Window::setMouseCapture(bool capture)
-{
-    if (capture) {
-        glfwSetInputMode(m_pWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    } else {
-        glfwSetInputMode(m_pWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-    }
-
-    glfwPollEvents();
-}
-
-glm::ivec2 Window::getWindowSize() const
-{
-    return m_windowSize;
-}
-
-glm::ivec2 Window::getFrameBufferSize() const
-{
-    glm::ivec2 out {};
-    glfwGetFramebufferSize(m_pWindow, &out.x, &out.y);
-    return out;
-}
-
-float Window::getAspectRatio() const
-{
-    if (m_windowSize.x == 0 || m_windowSize.y == 0)
-        return 1.0f;
-    return float(m_windowSize.x) / float(m_windowSize.y);
-}
-
-float Window::getDpiScalingFactor() const
-{
+float Window::getDpiScalingFactor() const {
     return m_dpiScalingFactor;
+}
+
+// Forward declare message handler from imgui_impl_win32.cpp
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+// Win32 message handler
+// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
+
+    auto* windowData = reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+    if(!windowData) return DefWindowProcW(hWnd, msg, wParam, lParam);
+
+    const ImGuiIO& io = ImGui::GetIO();
+
+    switch(msg) {
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            if(io.WantCaptureKeyboard) break;
+
+            int action = (msg == WM_KEYDOWN) ? GLFW_PRESS : GLFW_RELEASE;
+            int key = static_cast<int>(wParam);
+            int scancode = 0; // Optional: can use MapVirtualKey if needed
+            int mods = 0;     // Optional: get with GetKeyState(VK_SHIFT), etc.
+
+            for(const auto& cb : windowData->window->m_keyCallbacks) cb(key, scancode, action, mods);
+            break;
+        }
+
+        case WM_CHAR:
+        {
+            if(io.WantCaptureKeyboard) break;
+
+            auto codepoint = static_cast<unsigned>(wParam);
+            for(const auto& cb : windowData->window->m_charCallbacks) cb(codepoint);
+            break;
+        }
+
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        {
+            if(io.WantCaptureMouse) break;
+
+            int button = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? GLFW_MOUSE_BUTTON_LEFT : GLFW_MOUSE_BUTTON_RIGHT;
+            int action = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) ? GLFW_PRESS : GLFW_RELEASE;
+            int mods = 0; // Optional modifier keys
+
+            for(const auto& cb : windowData->window->m_mouseButtonCallbacks) cb(button, action, mods);
+            break;
+        }
+
+        case WM_MOUSEMOVE:
+        {
+            if(io.WantCaptureMouse) break;
+
+            int x = GET_X_LPARAM(lParam);
+            int y = GET_Y_LPARAM(lParam);
+            glm::vec2 pos = glm::vec2(x, windowData->window->windowSize.y - 1 - y);
+
+            for(const auto& cb : windowData->window->m_mouseMoveCallbacks) cb(pos);
+            break;
+        }
+
+        case WM_MOUSEWHEEL:
+        {
+            if(io.WantCaptureMouse) break;
+
+            float deltaY = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
+            glm::vec2 offset = glm::vec2(0, deltaY);
+
+            for(const auto& cb : windowData->window->m_scrollCallbacks) cb(offset);
+            break;
+        }
+        case WM_SIZE:
+            if(windowData->gpuState->get_device() != nullptr && wParam != SIZE_MINIMIZED) {
+                windowData->gpuState->waitForLastSubmittedFrame();
+                windowData->gpuState->cleanupRenderTarget();
+                HRESULT result = windowData->gpuState->get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+                assert(SUCCEEDED(result) && "Failed to resize swapchain.");
+                windowData->gpuState->createRenderTarget();
+            }
+            return 0;
+        case WM_NCDESTROY:
+            delete reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+            SetWindowLongPtr(hWnd, GWLP_USERDATA, 0);
+            break;
+        case WM_SYSCOMMAND:
+            if((wParam & 0xfff0) == SC_KEYMENU) return 0; // Disable ALT application menu
+            break;
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+    }
+
+    return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+void Window::prepareFrame() {
+    // Start the Dear ImGui frame
+    ImGui_ImplDX12_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+}
+
+HWND Window::getHWND() const {
+    return hwnd;
+}
+
+WNDCLASSEXW Window::getWc() const {
+    return wc;
 }

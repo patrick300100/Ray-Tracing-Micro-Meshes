@@ -1,180 +1,105 @@
 #include "shader.h"
-#include <framework/disable_all_warnings.h>
-DISABLE_WARNINGS_PUSH()
-#include <fmt/format.h>
-DISABLE_WARNINGS_POP()
+
+#include <d3dx12.h>
+#include <d3dcommon.h>
+#include <d3dcompiler.h>
 #include <cassert>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 #include <string>
+#include <utility>
 
-static constexpr GLuint invalid = 0xFFFFFFFF;
-
-static bool checkShaderErrors(GLuint shader);
-static bool checkProgramErrors(GLuint program);
-static std::string readFile(std::filesystem::path filePath);
-
-Shader::Shader(GLuint program)
-    : m_program(program)
+Shader::Shader(Microsoft::WRL::ComPtr<ID3DBlob> vBlob, Microsoft::WRL::ComPtr<ID3DBlob> pBlob, Microsoft::WRL::ComPtr<ID3DBlob> sig):
+    vertexShaderBlob(std::move(vBlob)),
+    pixelShaderBlob(std::move(pBlob)),
+    signature(std::move(sig))
 {
 }
 
-Shader::Shader()
-    : m_program(invalid)
+Shader::Shader(Shader&& other) noexcept :
+    vertexShaderBlob(std::move(other.vertexShaderBlob)),
+    pixelShaderBlob(std::move(other.pixelShaderBlob)),
+    signature(std::move(other.signature))
 {
 }
 
-Shader::Shader(Shader&& other)
-{
-    m_program = other.m_program;
-    other.m_program = invalid;
-}
-
-Shader::~Shader()
-{
-    if (m_program != invalid)
-        glDeleteProgram(m_program);
-}
-
-Shader& Shader::operator=(Shader&& other)
-{
-    if (m_program != invalid)
-        glDeleteProgram(m_program);
-
-    m_program = other.m_program;
-    other.m_program = invalid;
+Shader& Shader::operator=(Shader&& other) noexcept {
+    if(this != &other) {
+        vertexShaderBlob = std::move(other.vertexShaderBlob);
+        pixelShaderBlob = std::move(other.pixelShaderBlob);
+        signature = std::move(other.signature);
+    }
     return *this;
 }
 
-void Shader::bind() const
-{
-    assert(m_program != invalid);
-    glUseProgram(m_program);
-}
+ShaderBuilder& ShaderBuilder::addStage(const LPCWSTR& shaderFile, const LPCSTR& entryFunction, const LPCSTR& shaderModel) {
+    Microsoft::WRL::ComPtr<ID3DBlob> shaderBlob;
+    Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
 
-GLuint Shader::getAttributeLocation(const std::string& name) const
-{
-    GLuint loc = glGetAttribLocation(m_program, name.c_str());
-    if (loc == invalid) {
-        std::cerr << "Warning : Could not find attribute " << name << std::endl;
-    }
-    return loc;
-}
+    const HRESULT hr = D3DCompileFromFile(
+        shaderFile,
+        nullptr,
+        nullptr,
+        entryFunction,
+        shaderModel,
+        D3DCOMPILE_ENABLE_STRICTNESS,
+        0,
+        &shaderBlob,
+        &errorBlob
+    );
 
-GLint Shader::getUniformLocation(const std::string& name) const
-{
-    GLint loc = glGetUniformLocation(m_program, name.c_str());
-    if (loc == GL_INVALID_INDEX) {
-        std::cerr << "Warning : Could not find uniform " << name << std::endl;
-    }
-    return loc;
-}
+    if(FAILED(hr)) {
+        if(errorBlob) {
+            OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
 
-ShaderBuilder::~ShaderBuilder()
-{
-    freeShaders();
-}
-
-ShaderBuilder& ShaderBuilder::addStage(GLuint shaderStage, std::filesystem::path shaderFile)
-{
-    if (!std::filesystem::exists(shaderFile)) {
-        throw ShaderLoadingException(fmt::format("File {} does not exist", shaderFile.string().c_str()));
+        throw ShaderLoadingException("Failed to compile shader.");
     }
 
-    const std::string shaderSource = readFile(shaderFile);
-    const GLuint shader = glCreateShader(shaderStage);
-    const char* shaderSourcePtr = shaderSource.c_str();
-    glShaderSource(shader, 1, &shaderSourcePtr, nullptr);
-    glCompileShader(shader);
-    if (!checkShaderErrors(shader)) {
-        glDeleteShader(shader);
-        throw ShaderLoadingException(fmt::format("Failed to compile shader {}", shaderFile.string().c_str()));
-    }
+    shaders.push_back(shaderBlob);
 
-    m_shaders.push_back(shader);
     return *this;
 }
 
-ShaderBuilder& ShaderBuilder::addVS(const std::filesystem::path& shaderFile) {
-    return addStage(GL_VERTEX_SHADER, shaderFile);
+ShaderBuilder& ShaderBuilder::addVS(const LPCWSTR& shaderFile) {
+    return addStage(shaderFile, "VSMain", "vs_5_0");
 }
 
-ShaderBuilder& ShaderBuilder::addFS(const std::filesystem::path& shaderFile) {
-    return addStage(GL_FRAGMENT_SHADER, shaderFile);
+ShaderBuilder& ShaderBuilder::addPS(const LPCWSTR& shaderFile) {
+    return addStage(shaderFile, "PSMain", "ps_5_0");
 }
 
-Shader ShaderBuilder::build()
-{
-    // Combine vertex and fragment shaders into a single shader program.
-    GLuint program = glCreateProgram();
-    for (GLuint shader : m_shaders)
-        glAttachShader(program, shader);
-    glLinkProgram(program);
-    freeShaders();
+Shader ShaderBuilder::build() {
+    std::vector<CD3DX12_ROOT_PARAMETER> rootParameters(nConstBuffers);
 
-    if (!checkProgramErrors(program)) {
-        throw ShaderLoadingException("Shader program failed to link");
+    for(int i = 0; i < nConstBuffers; i++) {
+        rootParameters[i].InitAsConstantBufferView(i);
     }
 
-    return Shader(program);
+    CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+    rootSignatureDesc.Init(rootParameters.size(), rootParameters.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+    Microsoft::WRL::ComPtr<ID3DBlob> signature;
+    Microsoft::WRL::ComPtr<ID3DBlob> error;
+    const auto hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+    if(FAILED(hr)) OutputDebugStringA(static_cast<char*>(error->GetBufferPointer()));
+
+    return {shaders[0], shaders[1], signature};
 }
 
-void ShaderBuilder::freeShaders()
-{
-    for (GLuint shader : m_shaders)
-        glDeleteShader(shader);
+Microsoft::WRL::ComPtr<ID3DBlob> Shader::getVertexShaderBlob() const {
+    return vertexShaderBlob;
 }
 
-static std::string readFile(std::filesystem::path filePath)
-{
-    std::ifstream file(filePath, std::ios::binary);
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
+Microsoft::WRL::ComPtr<ID3DBlob> Shader::getPixelShaderBlob() const {
+    return pixelShaderBlob;
 }
 
-static bool checkShaderErrors(GLuint shader)
-{
-    // Check if the shader compiled successfully.
-    GLint compileSuccessful;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compileSuccessful);
-
-    // If it didn't, then read and print the compile log.
-    if (!compileSuccessful) {
-        GLint logLength;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
-
-        std::string logBuffer;
-        logBuffer.resize(static_cast<size_t>(logLength));
-        glGetShaderInfoLog(shader, logLength, nullptr, logBuffer.data());
-
-        std::cerr << logBuffer << std::endl;
-        return false;
-    } else {
-        return true;
-    }
+ShaderBuilder& ShaderBuilder::addConstantBuffers(const int nBuffers) {
+    nConstBuffers = nBuffers;
+    return *this;
 }
 
-static bool checkProgramErrors(GLuint program)
-{
-    // Check if the program linked successfully
-    GLint linkSuccessful;
-    glGetProgramiv(program, GL_LINK_STATUS, &linkSuccessful);
-
-    // If it didn't, then read and print the link log
-    if (!linkSuccessful) {
-        GLint logLength;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
-
-        std::string logBuffer;
-        logBuffer.resize(static_cast<size_t>(logLength));
-        glGetProgramInfoLog(program, logLength, nullptr, logBuffer.data());
-
-        std::cerr << logBuffer << std::endl;
-        return false;
-    } else {
-        return true;
-    }
+Microsoft::WRL::ComPtr<ID3DBlob> Shader::getSignature() const {
+    return signature;
 }
+

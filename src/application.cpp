@@ -1,9 +1,14 @@
 #include "GPUMesh.h"
 #include <framework/disable_all_warnings.h>
 #include "framework/TinyGLTFLoader.h"
+#include <windows.h>
+#include <comdef.h>
+#include <d3dcompiler.h>
+#include <d3dx12_core.h>
+#include <d3dx12_default.h>
+#include <framework/CreateBuffer.h>
+#include <wrl/client.h>
 DISABLE_WARNINGS_PUSH()
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -14,60 +19,80 @@ DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
 #include <framework/trackball.h>
+#include <directxmath.h>
+
 
 class Application {
 public:
-    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), OpenGLVersion::GL45) {
-        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath);
+    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState) {
+        if(!gpuState.createDevice(window.getHWND())) {
+            gpuState.cleanupDevice();
+            UnregisterClassW(window.getWc().lpszClassName, window.getWc().hInstance);
+            exit(1);
+        }
+        gpuState.initImGui();
+        gpuState.createDepthBuffer();
+
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, gpuState.get_device());
 
         try {
-            skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/skinning.vert").addFS(RESOURCE_ROOT "shaders/skinning.frag").build();
-            edgesShader = ShaderBuilder().addVS(RESOURCE_ROOT "shaders/mesh_edges.vert").addFS(RESOURCE_ROOT "shaders/mesh_edges.frag").build();
+            skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT L"shaders/skinningVS.hlsl").addPS(RESOURCE_ROOT L"shaders/skinningPS.hlsl").addConstantBuffers(5).build();
+            //edgesShader = ShaderBuilder().addVS(RESOURCE_ROOT L"shaders/mesh_edges.vert").addPS(RESOURCE_ROOT L"shaders/mesh_edges.frag").build();
         } catch (ShaderLoadingException& e) {
             std::cerr << e.what() << std::endl;
         }
+
+        gpuState.createPipeline(skinningShader);
+
+        boneBuffer = CreateBuffer<glm::mat4>(gpuState.get_device(), 10, true);
+        mvpBuffer = CreateBuffer<glm::mat4>(gpuState.get_device(), 1, true);
+        mvBuffer = CreateBuffer<glm::mat4>(gpuState.get_device(), 1, true);
+        displacementBuffer = CreateBuffer<float>(gpuState.get_device(), 1, true);
+        cameraPosBuffer = CreateBuffer<glm::vec3>(gpuState.get_device(), 1, true);
+    }
+
+    void render() {
+        const glm::mat4 mvMatrix = trackball->viewMatrix() * modelMatrix;
+        const glm::mat4 mvpMatrix = projectionMatrix * mvMatrix;
+
+        const auto bTs = mesh[0].cpuMesh.boneTransformations(gui.animation.time); //bone transformations
+
+        boneBuffer.copyDataIntoBuffer(bTs);
+        gpuState.setConstantBuffer(0,  boneBuffer.getBuffer());
+
+        mvpBuffer.copyDataIntoBuffer({glm::transpose(mvpMatrix)});
+        gpuState.setConstantBuffer(1,  mvpBuffer.getBuffer());
+
+        mvBuffer.copyDataIntoBuffer({glm::transpose(mvMatrix)});
+        gpuState.setConstantBuffer(2,  mvBuffer.getBuffer());
+
+        displacementBuffer.copyDataIntoBuffer({gui.displace});
+        gpuState.setConstantBuffer(3, displacementBuffer.getBuffer());
+
+        cameraPosBuffer.copyDataIntoBuffer({trackball->position()});
+        gpuState.setConstantBuffer(4, cameraPosBuffer.getBuffer());
+
+        gpuState.drawMesh(mesh[0].getVertexBufferView(), mesh[0].getIndexBufferView(), mesh[0].getIndexCount());
     }
 
     void update() {
-        while (!window.shouldClose()) {
+        while (window.shouldClose()) {
             window.updateInput();
+            Window::prepareFrame();
 
-            if(!gui.animation.pause) gui.animation.time = std::fmod(glfwGetTime(), mesh[0].cpuMesh.animationDuration());
+            if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
 
             menu();
-
-            //Needed for correct colors of wireframe
-            glBlendEquationSeparate(GL_FUNC_ADD, GL_MAX);
-            glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_COLOR, GL_DST_COLOR);
-
-            glClearColor(0.29f, 0.29f, 0.29f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glEnable(GL_DEPTH_TEST);
-
-            const glm::mat4 mvMatrix = trackball->viewMatrix() * modelMatrix;
-            const glm::mat4 mvpMatrix = projectionMatrix * mvMatrix;
-
-            for(GPUMesh& m : mesh) {
-                skinningShader.bind();
-                glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvpMatrix));
-                glUniformMatrix4fv(1, 1, GL_FALSE, glm::value_ptr(mvMatrix));
-                glUniform1f(2, gui.displace);
-                glUniform3fv(3, 1, glm::value_ptr(trackball->position()));
-
-                const auto bTs = m.cpuMesh.boneTransformations(gui.animation.time); //bone transformations
-                m.draw(bTs);
-
-                if(gui.wireframe) {
-                    edgesShader.bind();
-                    m.drawWireframe(mvpMatrix, gui.displace);
-                }
-            }
-
-            window.swapBuffers();
+            gpuState.renderFrame(ImVec4(0.29f, 0.29f, 0.29f, 1.00f), [this] { render(); }, window.windowSize);
         }
     }
 
+    ~Application() {
+        gpuState.waitForLastSubmittedFrame(); //Wait for the GPU to finish using up all resources before destroying everything
+    }
+
 private:
+    GPUState gpuState;
     Window window;
 
     Shader skinningShader;
@@ -89,6 +114,12 @@ private:
             bool pause = false;
         } animation;
     } gui;
+
+    CreateBuffer<glm::mat4> boneBuffer;
+    CreateBuffer<glm::mat4> mvpBuffer;
+    CreateBuffer<glm::mat4> mvBuffer;
+    CreateBuffer<float> displacementBuffer;
+    CreateBuffer<glm::vec3> cameraPosBuffer;
 
     void menu() {
         ImGui::Begin("Window");
@@ -115,6 +146,27 @@ private:
         }
 
         ImGui::End();
+    }
+
+    /**
+     * @return time in seconds since application launched (actually, since the first time we call this function, but we
+     * almost immediately call this function at startup)
+     */
+    static double getTime() {
+        static LARGE_INTEGER frequency;
+        static LARGE_INTEGER start;
+        static bool initialized = false;
+
+        if (!initialized) {
+            QueryPerformanceFrequency(&frequency);
+            QueryPerformanceCounter(&start);
+            initialized = true;
+        }
+
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
+
+        return static_cast<double>(now.QuadPart - start.QuadPart) / frequency.QuadPart;
     }
 };
 

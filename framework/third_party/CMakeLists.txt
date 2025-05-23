@@ -22,4 +22,8 @@ endif()
 FetchContent_Declare(micromesh-tools GIT_REPOSITORY https://github.com/NVlabs/micromesh-tools.git GIT_TAG "f542b31")
 FetchContent_MakeAvailable(micromesh-tools)
 
+if (MSVC)
+	target_compile_definitions(umeshtools_core PRIVATE _USE_MATH_DEFINES)
+endif()
+
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS_COPY})

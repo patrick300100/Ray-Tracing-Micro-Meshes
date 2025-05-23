@@ -3,6 +3,11 @@ project(ComputerGraphics C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
+# Only compile on Windows
+if(NOT WIN32)
+	message(FATAL_ERROR "This project requires Windows (DirectX 12)")
+endif()
+
 add_subdirectory("framework")
 
 add_executable(Micro_Meshes
@@ -12,20 +17,24 @@ add_executable(Micro_Meshes
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
-target_link_libraries(Micro_Meshes PRIVATE CGFramework)
+target_link_libraries(Micro_Meshes PRIVATE CGFramework d3d12 dxgi d3dcompiler)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
+
+if (MSVC)
+	target_compile_definitions(Micro_Meshes PRIVATE _USE_MATH_DEFINES)
+endif()
 
 # We would like to copy the files when they changed. Even if no *.cpp files were modified (and
 # thus no build is triggered). We tell CMake that the executable depends on the shader files in
 # the build directory. We also tell it how to generate those files (by copying them from the
-# shaders folder in this directory). The gather all glsl files in the shaders folder when CMake
+# shaders folder in this directory). The gather all hlsl files in the shaders folder when CMake
 # is configured. So if you were to add a shader file then you need to configure CMake again.
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/shaders/")
 
 set(Micro_Meshes_shader_copies "")
-# List all *.glsl files in the shaders folder
-file(GLOB Micro_Meshes_shader_sources "${CMAKE_CURRENT_LIST_DIR}/shaders/*.glsl")
+# List all *.hlsl files in the shaders folder
+file(GLOB Micro_Meshes_shader_sources "${CMAKE_CURRENT_LIST_DIR}/shaders/*.hlsl")
 foreach(shader_file IN LISTS Micro_Meshes_shader_sources)
 	get_filename_component(file_name ${shader_file} NAME)
 	message("shader_file: ${file_name}")
