@@ -9,6 +9,7 @@ if(NOT WIN32)
 endif()
 
 add_subdirectory("framework")
+add_subdirectory("src/dx_util")
 
 add_executable(Micro_Meshes
     "src/application.cpp"
@@ -17,7 +18,7 @@ add_executable(Micro_Meshes
 )
 
 target_compile_definitions(Micro_Meshes PRIVATE RESOURCE_ROOT="${CMAKE_CURRENT_LIST_DIR}/")
-target_link_libraries(Micro_Meshes PRIVATE CGFramework d3d12 dxgi d3dcompiler)
+target_link_libraries(Micro_Meshes PRIVATE CGFramework d3d12 dxgi d3dcompiler dx_util)
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 

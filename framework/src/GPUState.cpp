@@ -61,9 +61,20 @@ bool GPUState::createDevice(const HWND hWnd) {
     if(pdx12Debug != nullptr) {
         ID3D12InfoQueue* pInfoQueue = nullptr;
         device->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+
+        D3D12_MESSAGE_ID denyIDs[] = {
+            D3D12_MESSAGE_ID_CREATERESOURCE_STATE_IGNORED, //Harmless error about default heap
+        };
+
+        D3D12_INFO_QUEUE_FILTER filter = {};
+        filter.DenyList.NumIDs = _countof(denyIDs);
+        filter.DenyList.pIDList = denyIDs;
+        pInfoQueue->AddStorageFilterEntries(&filter);
+
         pInfoQueue->Release();
         pdx12Debug->Release();
     }

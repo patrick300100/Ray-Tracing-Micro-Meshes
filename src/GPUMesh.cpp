@@ -3,7 +3,7 @@
 #include <d3dx12.h>
 #include <framework/disable_all_warnings.h>
 #include <framework/TinyGLTFLoader.h>
-#include "framework/CreateBuffer.h"
+#include "UploadBuffer.h"
 
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.inl>
@@ -18,19 +18,19 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const Microsoft::WRL::ComPtr<ID3D12Device>
 
     //Create vertex buffer
     {
-        CreateBuffer<Vertex> vBuffer(device, vData.size());
-        vBuffer.copyDataIntoBuffer(vData);
+        UploadBuffer<Vertex> vBuffer(device, vData.size());
+        vBuffer.upload(vData);
 
         vertexBuffer = std::move(vBuffer.getBuffer());
-        vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
+        vertexBufferView.BufferLocation = vBuffer.getBuffer()->GetGPUVirtualAddress();
         vertexBufferView.StrideInBytes = sizeof(Vertex);
         vertexBufferView.SizeInBytes = vData.size() * sizeof(Vertex);
     }
 
     //Create index buffer
     {
-        CreateBuffer<glm::uvec3> iBuffer(device, iData.size());
-        iBuffer.copyDataIntoBuffer(iData);
+        UploadBuffer<glm::uvec3> iBuffer(device, iData.size());
+        iBuffer.upload(iData);
 
         indexBuffer = std::move(iBuffer.getBuffer());
         indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
