@@ -3,6 +3,7 @@
 #include "framework/TinyGLTFLoader.h"
 #include <windows.h>
 
+#include "RasterizationShader.h"
 #include "UploadBuffer.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/glm.hpp>
@@ -10,7 +11,7 @@ DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui/imgui.h>
 DISABLE_WARNINGS_POP()
-#include <framework/shader.h>
+#include <shader.h>
 #include <framework/window.h>
 #include <iostream>
 #include <vector>
@@ -29,12 +30,7 @@ public:
 
         mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, gpuState.get_device());
 
-        try {
-            skinningShader = ShaderBuilder().addVS(RESOURCE_ROOT L"shaders/skinningVS.hlsl").addPS(RESOURCE_ROOT L"shaders/skinningPS.hlsl").addConstantBuffers(5).build();
-            //edgesShader = ShaderBuilder().addVS(RESOURCE_ROOT L"shaders/mesh_edges.vert").addPS(RESOURCE_ROOT L"shaders/mesh_edges.frag").build();
-        } catch (ShaderLoadingException& e) {
-            std::cerr << e.what() << std::endl;
-        }
+        skinningShader = RasterizationShader(RESOURCE_ROOT L"shaders/skinningVS.hlsl", RESOURCE_ROOT L"shaders/skinningPS.hlsl", 5);
 
         gpuState.createPipeline(skinningShader);
 
@@ -90,8 +86,7 @@ private:
     GPUState gpuState;
     Window window;
 
-    Shader skinningShader;
-    Shader edgesShader;
+    RasterizationShader skinningShader;
 
     std::vector<GPUMesh> mesh;
 

@@ -1,17 +1,14 @@
 #pragma once
 #include <d3d12.h>
-#include "GPUState.h"
-#include <imgui/imgui.h>
+#include <../../src/dx_util/GPUState.h>
 
 #include "disable_all_warnings.h"
-#include "opengl_includes.h"
 // Suppress warnings in third-party code.
 DISABLE_WARNINGS_PUSH()
 #include <GLFW/glfw3.h>
 #include <glm/vec2.hpp>
 DISABLE_WARNINGS_POP()
 #include <functional>
-#include <optional>
 #include <string_view>
 #include <vector>
 #include <filesystem>
