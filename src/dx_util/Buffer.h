@@ -15,19 +15,4 @@ public:
 
     virtual void upload(const std::vector<T>& data) = 0;
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Resource> getBuffer() const { return buffer; }
-
-    // Buffer(Buffer&& other) noexcept: buffer(std::move(other.buffer)), size(other.size) {
-    //     other.size = 0;
-    // }
-    //
-    // Buffer& operator=(Buffer&& other) noexcept {
-    //     if(this != &other) {
-    //         buffer = std::move(other.buffer);
-    //
-    //         size = other.size;
-    //         other.size = 0;
-    //     }
-    //
-    //     return *this;
-    // }
 };
