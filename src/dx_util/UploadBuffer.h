@@ -4,7 +4,7 @@
 #include "Buffer.h"
 
 template<typename T>
-class UploadBuffer final : public Buffer<T> {
+class UploadBuffer final : public Buffer {
     void* mappedPtr = nullptr;
 
 public:
@@ -34,7 +34,7 @@ public:
         mappedPtr = nullptr;
     }
 
-    void upload(const std::vector<T>& data) override {
+    void upload(const std::vector<T>& data) {
         memcpy(mappedPtr, data.data(), data.size() * sizeof(T));
     }
 

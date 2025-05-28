@@ -7,14 +7,14 @@
 using namespace Microsoft::WRL;
 
 template<typename T>
-class DefaultBuffer final : public Buffer<T> {
+class DefaultBuffer final : public Buffer {
     UploadBuffer<T> uploadBuffer;
     ComPtr<ID3D12GraphicsCommandList> cmdList;
 
 public:
     DefaultBuffer() = default;
 
-    DefaultBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const ComPtr<ID3D12GraphicsCommandList>& cmdl, const bool isConstantBuffer = false):
+    DefaultBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const ComPtr<ID3D12GraphicsCommandList>& cmdl, const bool isConstantBuffer = false, D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE):
         uploadBuffer(device, elementCount, isConstantBuffer),
         cmdList(cmdl)
     {
@@ -22,7 +22,7 @@ public:
         if(isConstantBuffer) this->size = (this->size + 255) & ~255;
 
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
-        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(this->size);
+        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(this->size, flags);
 
         device->CreateCommittedResource(
             &heapProps,
@@ -34,7 +34,7 @@ public:
         );
     }
 
-    void upload(const std::vector<T>& data) override {
+    void upload(const std::vector<T>& data) {
         uploadBuffer.upload(data);
 
         const auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
