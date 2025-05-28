@@ -45,7 +45,10 @@ ComputeShader::ComputeShader(const LPCWSTR& shaderFile, const ComPtr<ID3D12Devic
 
 void ComputeShader::initBuffers(const std::vector<BufferType>& buffers) {
     std::vector<CD3DX12_ROOT_PARAMETER> rootParams;
+    rootParams.reserve(buffers.size());
+
     std::vector<CD3DX12_DESCRIPTOR_RANGE> descriptorRanges;
+    descriptorRanges.reserve(buffers.size());
 
     UINT srvRegister = 0, uavRegister = 0, cbvRegister = 0;
 
@@ -85,7 +88,12 @@ void ComputeShader::initBuffers(const std::vector<BufferType>& buffers) {
     );
 
     ComPtr<ID3DBlob> error;
-    D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+    const HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+
+    if(FAILED(hr) && error) {
+        OutputDebugStringA(static_cast<char*>(error->GetBufferPointer()));
+        error->Release();
+    }
 
     device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
 }
