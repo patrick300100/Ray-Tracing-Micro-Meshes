@@ -4,7 +4,6 @@
 #include <framework/mesh.h>
 #include "WireframeDraw.h"
 #include <filesystem>
-#include <framework/opengl_includes.h>
 #include <wrl/client.h>
 
 struct MeshLoadingException final : std::runtime_error {

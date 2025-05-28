@@ -21,14 +21,12 @@ else()
 	add_library(CGFramework STATIC
 		"src/trackball.cpp"
 		"src/image.cpp"
-		"src/shader.cpp"
 		"src/window.cpp"
 		"src/imguizmo.cpp"
 		"src/ImGuizmo/ImGuizmo.cpp"
 		"src/TinyGLTFLoader.cpp"
 		"src/MeshIterator.cpp"
 		"src/mesh.cpp"
-		"src/GPUState.cpp"
 	)
 	target_include_directories(CGFramework PRIVATE "include/framework/" PUBLIC "include/")
 	target_include_directories(CGFramework PUBLIC "third_party/d3dx12")

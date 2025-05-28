@@ -7,6 +7,7 @@
 #include <functional>
 #include <glm/vec2.hpp>
 
+#include "RasterizationShader.h"
 #include "shader.h"
 
 struct FrameContext {
@@ -108,7 +109,7 @@ public:
     void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize);
 
     void createDepthBuffer();
-    void createPipeline(const Shader& shaders);
+    void createPipeline(const RasterizationShader& shaders);
 
     void drawMesh(D3D12_VERTEX_BUFFER_VIEW vbv, D3D12_INDEX_BUFFER_VIEW ibv, UINT nIndices) const;
 

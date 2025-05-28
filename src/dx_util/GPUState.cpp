@@ -1,8 +1,9 @@
 #include "GPUState.h"
 
 #include <d3dx12.h>
-#include <mesh.h>
-#include <imgui/imgui_impl_dx12.h>
+#include <../../framework/include/framework/mesh.h>
+#include <../../framework/third_party/imgui/include/imgui/imgui_impl_dx12.h>
+#include "../../src/dx_util/RasterizationShader.h"
 
 #ifdef _DEBUG
 #define DX12_ENABLE_DEBUG_LAYER
@@ -61,9 +62,20 @@ bool GPUState::createDevice(const HWND hWnd) {
     if(pdx12Debug != nullptr) {
         ID3D12InfoQueue* pInfoQueue = nullptr;
         device->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
         pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+
+        D3D12_MESSAGE_ID denyIDs[] = {
+            D3D12_MESSAGE_ID_CREATERESOURCE_STATE_IGNORED, //Harmless error about default heap
+        };
+
+        D3D12_INFO_QUEUE_FILTER filter = {};
+        filter.DenyList.NumIDs = _countof(denyIDs);
+        filter.DenyList.pIDList = denyIDs;
+        pInfoQueue->AddStorageFilterEntries(&filter);
+
         pInfoQueue->Release();
         pdx12Debug->Release();
     }
@@ -296,7 +308,7 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     frameCtx->fenceValue = fenceValue;
 }
 
-void GPUState::createPipeline(const Shader& shaders) {
+void GPUState::createPipeline(const RasterizationShader& shaders) {
     device->CreateRootSignature(0, shaders.getSignature()->GetBufferPointer(), shaders.getSignature()->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
 
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
@@ -323,8 +335,8 @@ void GPUState::createPipeline(const Shader& shaders) {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
     psoDesc.pRootSignature = rootSignature.Get();
-    psoDesc.VS = { shaders.getVertexShaderBlob()->GetBufferPointer(), shaders.getVertexShaderBlob()->GetBufferSize() };
-    psoDesc.PS = { shaders.getPixelShaderBlob()->GetBufferPointer(), shaders.getPixelShaderBlob()->GetBufferSize() };
+    psoDesc.VS = { shaders.getVertexShader()->GetBufferPointer(), shaders.getVertexShader()->GetBufferSize() };
+    psoDesc.PS = { shaders.getPixelShader()->GetBufferPointer(), shaders.getPixelShader()->GetBufferSize() };
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     psoDesc.DepthStencilState = depthStencilDesc;
