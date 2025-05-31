@@ -13,10 +13,29 @@ class DefaultBuffer final : public Buffer {
 public:
     DefaultBuffer() = default;
 
+    /**
+     * Creates a default buffer.
+     *
+     * @param device the device
+     * @param elementCount the number of elements in the buffer
+     * @param flags buffer flags
+     */
     DefaultBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE):
-        uploadBuffer(device, elementCount)
+        DefaultBuffer(sizeof(T) * elementCount, device, flags)
     {
-        this->size = sizeof(T) * elementCount;
+    }
+
+    /**
+     * Creates a default buffer.
+     *
+     * @param sizeInBytes the full size of the buffer in bytes
+     * @param device the device
+     * @param flags buffer flags
+     */
+    DefaultBuffer(const unsigned long long sizeInBytes, const ComPtr<ID3D12Device>& device, const D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE):
+        uploadBuffer(sizeInBytes, device)
+    {
+        this->size = sizeInBytes;
 
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
         const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(this->size, flags);

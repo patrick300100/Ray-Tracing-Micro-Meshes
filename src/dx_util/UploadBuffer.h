@@ -10,8 +10,25 @@ class UploadBuffer final : public Buffer {
 public:
     UploadBuffer() = default;
 
-    UploadBuffer(const Microsoft::WRL::ComPtr<ID3D12Device>& device, const int elementCount, const bool isConstantBuffer = false) {
-        this->size = sizeof(T) * elementCount;
+    /**
+     * Creates an upload buffer.
+     *
+     * @param device the device
+     * @param elementCount the number of elements in the buffer
+     * @param isConstantBuffer whether the buffer is a constant buffer or not
+     */
+    UploadBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const bool isConstantBuffer = false): UploadBuffer(sizeof(T) * elementCount, device, isConstantBuffer) {
+    }
+
+    /**
+     * Creates an upload buffer.
+     *
+     * @param sizeInBytes the full size of the buffer in bytes
+     * @param device the device
+     * @param isConstantBuffer whether the buffer is a constant buffer or not
+     */
+    UploadBuffer(const unsigned long long sizeInBytes, const ComPtr<ID3D12Device>& device, const bool isConstantBuffer = false) {
+        this->size = sizeInBytes;
         if(isConstantBuffer) this->size = (this->size + 255) & ~255;
 
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
