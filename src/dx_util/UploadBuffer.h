@@ -27,12 +27,11 @@ public:
      * @param device the device
      * @param isConstantBuffer whether the buffer is a constant buffer or not
      */
-    UploadBuffer(const unsigned long long sizeInBytes, const ComPtr<ID3D12Device>& device, const bool isConstantBuffer = false) {
-        this->size = sizeInBytes;
-        if(isConstantBuffer) this->size = (this->size + 255) & ~255;
+    UploadBuffer(unsigned long long sizeInBytes, const ComPtr<ID3D12Device>& device, const bool isConstantBuffer = false) {
+        if(isConstantBuffer) sizeInBytes = (sizeInBytes + 255) & ~255;
 
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(this->size);
+        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes);
 
         device->CreateCommittedResource(
             &heapProps,
@@ -61,18 +60,12 @@ public:
     UploadBuffer(UploadBuffer&& other) noexcept: mappedPtr(other.mappedPtr) {
         this->buffer = std::move(other.buffer);
 
-        this->size = other.size;
-        other.size = 0;
-
         other.mappedPtr = nullptr;
     }
 
     UploadBuffer& operator=(UploadBuffer&& other) noexcept {
         if (this != &other) {
             this->buffer = std::move(other.buffer);
-
-            this->size = other.size;
-            other.size = 0;
 
             mappedPtr = other.mappedPtr;
             other.mappedPtr = nullptr;
