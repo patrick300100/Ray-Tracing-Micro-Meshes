@@ -18,10 +18,11 @@ public:
      *
      * @param device the device
      * @param elementCount the number of elements in the buffer
-     * @param flags buffer flags
+     * @param state buffer state
+     * @param flag buffer flag
      */
-    DefaultBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE):
-        DefaultBuffer(sizeof(T) * elementCount, device, flags)
+    DefaultBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const D3D12_RESOURCE_STATES state, const D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE):
+        DefaultBuffer(sizeof(T) * elementCount, device, state, flag)
     {
     }
 
@@ -30,19 +31,20 @@ public:
      *
      * @param sizeInBytes the full size of the buffer in bytes
      * @param device the device
-     * @param flags buffer flags
+     * @param state buffer state
+     * @param flag buffer flag
      */
-    DefaultBuffer(const unsigned long long sizeInBytes, const ComPtr<ID3D12Device>& device, const D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE):
+    DefaultBuffer(const unsigned long long sizeInBytes, const ComPtr<ID3D12Device>& device, const D3D12_RESOURCE_STATES state, const D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE):
         uploadBuffer(sizeInBytes, device)
     {
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
-        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes, flags);
+        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes, flag);
 
         device->CreateCommittedResource(
             &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &bufferDesc,
-            D3D12_RESOURCE_STATE_COPY_DEST,
+            state,
             nullptr,
             IID_PPV_ARGS(&this->buffer)
         );

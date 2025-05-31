@@ -1,13 +1,5 @@
 struct Vertex {
     float3 position;
-    float3 normal;
-    uint4 boneIndices;
-    float4 boneWeights;
-    float3 displacement;
-};
-
-struct uVertex {
-    float3 position;
     float3 displacement;
 };
 
@@ -24,12 +16,10 @@ struct AABB {
 };
 
 StructuredBuffer<Vertex> baseVertices : register(t0);
-StructuredBuffer<uVertex> microVertices : register(t1);
+StructuredBuffer<Vertex> microVertices : register(t1);
 StructuredBuffer<Triangle> triangles : register(t2);
 
 RWStructuredBuffer<AABB> AABBs : register(u0);
-
-const float MAX_FLOAT = 3.402823466e+38f;
 
 void processVertex(Vertex v, inout AABB aabb) {
     float3 displacedPos = v.position + v.displacement;
@@ -45,9 +35,11 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     //We don't want a thread writes outside of the given buffer region
     uint triangleCount, triangleStride;
     triangles.GetDimensions(triangleCount, triangleStride);
-    if (id >= triangleCount) return;
+    if(id >= triangleCount) return;
 
     Triangle t = triangles[id];
+
+    const float MAX_FLOAT = 3.402823466e+38f;
 
     AABB aabb;
     aabb.minPos = float3(MAX_FLOAT, MAX_FLOAT, MAX_FLOAT);
@@ -58,7 +50,7 @@ void main(uint3 DTid : SV_DispatchThreadID) {
     processVertex(baseVertices[t.baseVertexIndices.z], aabb);
 
     for(int i = t.uVerticesStart; i < t.uVerticesStart + t.uVerticesCount; i++) {
-        uVertex mv = microVertices[i];
+        Vertex mv = microVertices[i];
         float3 displacedPos = mv.position + mv.displacement;
 
         aabb.minPos = min(aabb.minPos, displacedPos);

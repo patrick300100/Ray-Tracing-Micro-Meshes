@@ -3,6 +3,8 @@
 #include <d3dx12.h>
 #include "Buffer.h"
 
+using namespace Microsoft::WRL;
+
 template<typename T>
 class UploadBuffer final : public Buffer {
     void* mappedPtr = nullptr;
