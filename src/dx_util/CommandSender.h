@@ -6,15 +6,17 @@
 /**
  * Can be used to send commands to the GPU.
  */
-class CommandListWrapper {
+class CommandSender {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> cmdQueue;
 
 public:
-    explicit CommandListWrapper(const Microsoft::WRL::ComPtr<ID3D12Device>& device);
+    CommandSender(const Microsoft::WRL::ComPtr<ID3D12Device>& device, D3D12_COMMAND_LIST_TYPE cmdListType);
 
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> getCommandList() const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12CommandQueue> getCommandQueue() const;
 
-    void execute(const Microsoft::WRL::ComPtr<ID3D12CommandQueue>& cmdQueue) const;
+    void execute() const;
     void reset() const;
 };
