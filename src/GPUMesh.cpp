@@ -71,7 +71,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMe
     cw.reset();
 
     //Create our compute shader and execute it (computing an AABB around each triangle)
-    ComputeShader cs(RESOURCE_ROOT L"shaders/skinning.hlsl", device, {{SRV, 3}, {UAV, 1}}, sizeof(D3D12_RAYTRACING_AABB) * triangles.size());
+    ComputeShader cs(RESOURCE_ROOT L"shaders/createAABBs.hlsl", device, {{SRV, 3}, {UAV, 1}}, sizeof(D3D12_RAYTRACING_AABB) * triangles.size());
     cs.createSRV<SimpleVertex>(baseVertexBuffer.getBuffer());
     cs.createSRV<uVertex>(microVertexBuffer.getBuffer());
     cs.createSRV<SimpleTriangle>(triangleBuffer.getBuffer());
