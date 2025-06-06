@@ -3,7 +3,7 @@
 #include <d3dx12.h>
 #include <d3d12.h>
 
-RasterizationShader::RasterizationShader(const LPCWSTR& vertexFile, const LPCWSTR& pixelFile, const int nConstantBuffers) {
+RasterizationShader::RasterizationShader(const LPCWSTR& vertexFile, const LPCWSTR& pixelFile, const int nConstantBuffers, const ComPtr<ID3D12Device>& device) {
     addStage(vertexFile, "VSMain", "vs_5_0");
     addStage(pixelFile, "PSMain", "ps_5_0");
 
@@ -16,9 +16,11 @@ RasterizationShader::RasterizationShader(const LPCWSTR& vertexFile, const LPCWST
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init(rootParameters.size(), rootParameters.data(), 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    ComPtr<ID3DBlob> error;
+    ComPtr<ID3DBlob> signature, error;
     const auto hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
     if(FAILED(hr)) OutputDebugStringA(static_cast<char*>(error->GetBufferPointer()));
+
+    device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
 }
 
 ComPtr<ID3DBlob> RasterizationShader::getVertexShader() const {

@@ -30,7 +30,7 @@ public:
 
         mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, gpuState.get_device());
 
-        skinningShader = RasterizationShader(RESOURCE_ROOT L"shaders/skinningVS.hlsl", RESOURCE_ROOT L"shaders/skinningPS.hlsl", 5);
+        skinningShader = RasterizationShader(RESOURCE_ROOT L"shaders/skinningVS.hlsl", RESOURCE_ROOT L"shaders/skinningPS.hlsl", 5, gpuState.get_device());
 
         gpuState.createPipeline(skinningShader);
 
@@ -39,7 +39,6 @@ public:
         mvBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 1, true);
         displacementBuffer = UploadBuffer<float>(gpuState.get_device(), 1, true);
         cameraPosBuffer = UploadBuffer<glm::vec3>(gpuState.get_device(), 1, true);
-
     }
 
     void render() {
@@ -74,7 +73,7 @@ public:
             if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
 
             menu();
-            gpuState.renderFrame(ImVec4(0.29f, 0.29f, 0.29f, 1.00f), [this] { render(); }, window.windowSize);
+            gpuState.renderFrame(ImVec4(0.29f, 0.29f, 0.29f, 1.00f), [this] { render(); }, skinningShader);
         }
     }
 

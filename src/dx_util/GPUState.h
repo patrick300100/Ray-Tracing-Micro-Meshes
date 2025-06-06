@@ -87,7 +87,6 @@ class GPUState {
     D3D12_CPU_DESCRIPTOR_HANDLE mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
 
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> depthStencilBuffer;
 
@@ -106,7 +105,7 @@ public:
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Device> get_device() const;
     [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
-    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize);
+    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const Shader& shader);
 
     void createDepthBuffer();
     void createPipeline(const RasterizationShader& shaders);

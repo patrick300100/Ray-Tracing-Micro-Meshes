@@ -1,5 +1,6 @@
 #include "ComputeShader.h"
 
+#include <algorithm>
 #include "ReadbackBuffer.h"
 
 ComputeShader::ComputeShader(const LPCWSTR& shaderFile, const ComPtr<ID3D12Device>& device, const std::vector<std::pair<BufferType, int>>& buffers, const unsigned long long outputSizeInBytes):
@@ -78,7 +79,7 @@ void ComputeShader::initBuffers(const std::vector<std::pair<BufferType, int>>& b
     CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
     rootSigDesc.Init(1, &rootParam, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_NONE);
 
-    ComPtr<ID3DBlob> error;
+    ComPtr<ID3DBlob> signature, error;
     const HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
 
     if(FAILED(hr) && error) {

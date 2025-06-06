@@ -170,7 +170,6 @@ void GPUState::cleanupDevice() {
     if(fence) fence.Reset();
     if(fenceEvent) { CloseHandle(fenceEvent); fenceEvent = nullptr; }
     if(pipeline) pipeline.Reset();
-    if(rootSignature) rootSignature.Reset();
     if(depthStencilBuffer) depthStencilBuffer.Reset();
     if(device) device.Reset();
 
@@ -238,7 +237,7 @@ void GPUState::initImGui() const {
     ImGui_ImplDX12_Init(device.Get(), APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap.Get(), srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
 }
 
-void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize) {
+void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const Shader& shader) {
     FrameContext* frameCtx = waitForNextFrameResources();
     const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
     frameCtx->commandAllocator->Reset();
@@ -279,7 +278,7 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
 
     ID3D12DescriptorHeap* heap[] = { srvDescHeap.Get() };
     commandList->SetDescriptorHeaps(1, heap);
-    commandList->SetGraphicsRootSignature(rootSignature.Get());
+    commandList->SetGraphicsRootSignature(shader.getRootSignature().Get());
 
     commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
@@ -309,8 +308,6 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
 }
 
 void GPUState::createPipeline(const RasterizationShader& shaders) {
-    device->CreateRootSignature(0, shaders.getSignature()->GetBufferPointer(), shaders.getSignature()->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
-
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         { "POSITION",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, position),         D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
         { "NORMAL",         0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, normal),           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -334,7 +331,7 @@ void GPUState::createPipeline(const RasterizationShader& shaders) {
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
-    psoDesc.pRootSignature = rootSignature.Get();
+    psoDesc.pRootSignature = shaders.getRootSignature().Get();
     psoDesc.VS = { shaders.getVertexShader()->GetBufferPointer(), shaders.getVertexShader()->GetBufferSize() };
     psoDesc.PS = { shaders.getPixelShader()->GetBufferPointer(), shaders.getPixelShader()->GetBufferSize() };
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);

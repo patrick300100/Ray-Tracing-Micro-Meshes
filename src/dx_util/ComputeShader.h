@@ -16,7 +16,6 @@ enum BufferType {
 class ComputeShader : public Shader {
     ComPtr<ID3D12Device> device;
     ComPtr<ID3D12PipelineState> pipelineState;
-    ComPtr<ID3D12RootSignature> rootSignature;
     D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle{};
     UINT descriptorSize{};
     ComPtr<ID3D12CommandAllocator> cmdAllocator;
