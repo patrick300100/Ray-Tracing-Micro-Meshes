@@ -50,7 +50,7 @@ public:
      * So if you want to process n elements, we assume that the compute shader outputs n elements back.
      *
      * @tparam T the type of the result of the compute shader.
-     * @param outputBuffer the buffer where the results should be copied into
+     * @param outputBuffer the buffer where the compute shader copies the results into (this is typically the UAV buffer)
      * @param elementsToProcess the total number of elements that the GPU has to compute for you (and returns).
      * @return a vector containing the output data of the compute shader
      */
