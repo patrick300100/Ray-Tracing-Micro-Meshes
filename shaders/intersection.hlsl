@@ -75,13 +75,13 @@ struct IntersectedEdges {
     int count; //How many edges actually got crossed (might be less than 4)
 };
 
-cbuffer meshData : register(b0) {
+cbuffer meshData : register(b1) {
     uint subDivLvl;
 };
 
-StructuredBuffer<InputVertex> vertices : register(t0);
-StructuredBuffer<AABB> AABBs : register(t1);
-StructuredBuffer<float3> displacements : register(t2);
+StructuredBuffer<InputVertex> vertices : register(t1);
+StructuredBuffer<AABB> AABBs : register(t2);
+StructuredBuffer<float3> displacements : register(t3);
 
 //Projects a position onto the plane defined by T and B
 // @param p: the position to project onto the plane
@@ -89,7 +89,7 @@ StructuredBuffer<float3> displacements : register(t2);
 // @param B: the bitangent vector
 // @param v0Pos: the position of vertex0 (will act as the origin of the plane)
 // @return: the position onto the plane, relative to the origin of the plane (v0Pos)
-float2 projectTo2D(float p, float3 T, float3 B, float3 v0Pos) {
+float2 projectTo2D(float3 p, float3 T, float3 B, float3 v0Pos) {
 	float3 rel = p - v0Pos;
 
     return float2(dot(rel, T), dot(rel, B));
@@ -136,7 +136,7 @@ float3 getDisplacement(float2 coords, int dOffset) {
 }
 
 //TODO maybe not necessary to return bool? Just return t value
-bool rayIntersectsEdge(Ray2D ray, Edge e, out float t) {
+bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t) {
 	float2 val1 = ray.origin - e.start.position;
     float2 val2 = e.end.position - e.start.position;
     float2 val3 = float2(-ray.direction.y, ray.direction.x);
