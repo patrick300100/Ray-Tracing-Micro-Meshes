@@ -66,14 +66,6 @@ struct TriangleDAUD {
 struct IntersectedTriangles {
     TriangleDAUD triangles[3]; //A maximum of 3 triangles can be crossed if you have a triangle with its next subdivision level
     int count; //How many triangles actually got crossed (might be less than 3)
-
-    //TODO probably can get rid of this field. We can use `count`, and stay within bounds
-    int _index; //Private field; always initialize to 0. DO NOT TOUCH OUTSIDE THIS STRUCT. This field represents which triangle we are processing.
-
-    //Returns the next triangle that should be processed
-    TriangleDAUD getNextTriangle() {
-        return triangles[_index++];
-    }
 };
 
 //Utility struct to represent the array edges that the ray crossed (in order).
@@ -248,7 +240,7 @@ EdgeWithT getFirstIntersectedEdge(Ray2D ray, Edge edgesD[9], Edge edgesU[9]) {
 // @param tDis: the displaced triangle
 // @param tUndis: the undisplaced triangle
 // @param ray: the ray in 2D
-// @return an array of (undisplaced) triangles that the ray crossed in order
+// @return an array of triangles that the ray crossed in order
 IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis, Ray2D ray, int dOffset, Plane p) {
 	Vertex2D v0Displaced = tDis.vertices[0];
     Vertex2D v1Displaced = tDis.vertices[1];
@@ -337,7 +329,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
 
     if(ies.count == 0) {
         TriangleDAUD ts[3];
-        IntersectedTriangles its = {ts, 0, 0};
+        IntersectedTriangles its = {ts, 0};
         return its;
     } else if(ies.count == 4) {
         Triangle2D tsDisplaced[3] = {
@@ -358,7 +350,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
             {tsDisplaced[2], tsUndisplaced[2]}
         };
 
-        IntersectedTriangles its = {tDaud, 3, 0};
+        IntersectedTriangles its = {tDaud, 3};
         return its;
     } else {
         Edge allEdgesD[9] = {e0Displaced, e1Displaced, e2Displaced, e3Displaced, e4Displaced, e5Displaced, e6Displaced, e7Displaced, e8Displaced};
@@ -388,7 +380,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
             {tsD[2], tsU[2]}
         };
 
-        IntersectedTriangles its = {tDaud, tCount, 0};
+        IntersectedTriangles its = {tDaud, tCount};
         return its;
     }
 }
@@ -463,8 +455,10 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
         } else {
             IntersectedTriangles its = getIntersectedTriangles(current.tri.tDisplaced, current.tri.tUndisplaced, ray, dOffset, p);
 
-            for(int i = 0; i < its.count; ++i) {
-                TriangleDAUD nextTri = its.getNextTriangle();
+            //Push intersected triangles in reverse order to main correct processing order (triangles should be processed in the order the ray hits them)
+            //TODO switching data structure to a queue would make more sense...
+            for(int i = its.count - 1; i >= 0; i--) {
+                TriangleDAUD nextTri = its.triangles[i];
 
                 StackElement se = { nextTri, current.level + 1 };
                 stack[stackTop++] = se;
