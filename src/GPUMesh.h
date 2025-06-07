@@ -28,8 +28,6 @@ class GPUMesh {
 
     //WireframeDraw wfDraw;
 
-    static void waitOnGPU(const ComPtr<ID3D12Device>& device, const ComPtr<ID3D12CommandQueue>& commandQueue);
-
     void createBLAS(
         const ComPtr<ID3D12Device5>& device5,
         const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,

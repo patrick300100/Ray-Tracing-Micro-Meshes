@@ -66,8 +66,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMe
     DefaultBuffer<D3D12_RAYTRACING_AABB> outputBuffer(device, triangles.size(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
     //Execute, wait and reset for later use
-    cw.execute();
-    waitOnGPU(device, cw.getCommandQueue());
+    cw.execute(device);
     cw.reset();
 
     //Create our compute shader and execute it (computing an AABB around each triangle)
@@ -94,8 +93,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMe
     UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC> instanceBuffer(device, 1);
     createTLAS(device5, cmdList4, scratchBufferTLAS, instanceBuffer);
 
-    cw.execute();
-    waitOnGPU(device, cw.getCommandQueue());
+    cw.execute(device);
 
 
 
@@ -202,20 +200,6 @@ D3D12_INDEX_BUFFER_VIEW GPUMesh::getIndexBufferView() const {
 
 UINT GPUMesh::getIndexCount() const {
     return nIndices;
-}
-
-void GPUMesh::waitOnGPU(const ComPtr<ID3D12Device>& device, const ComPtr<ID3D12CommandQueue>& commandQueue) {
-    ComPtr<ID3D12Fence> fence;
-    UINT64 fenceValue = 1;
-    HANDLE fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-
-    commandQueue->Signal(fence.Get(), fenceValue);
-    if(fence->GetCompletedValue() < fenceValue) {
-        fence->SetEventOnCompletion(fenceValue, fenceEvent);
-        WaitForSingleObject(fenceEvent, INFINITE);
-    }
-    CloseHandle(fenceEvent);
 }
 
 void GPUMesh::createBLAS(

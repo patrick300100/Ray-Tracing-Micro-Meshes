@@ -15,11 +15,13 @@ Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandSender::getCommandList(
     return cmdList;
 }
 
-void CommandSender::execute() const {
+void CommandSender::execute(const Microsoft::WRL::ComPtr<ID3D12Device>& device) const {
     cmdList->Close();
 
     ID3D12CommandList* lists[] = { cmdList.Get() };
     cmdQueue->ExecuteCommandLists(_countof(lists), lists);
+
+    waitOnGPU(device);
 }
 
 void CommandSender::reset() const {
@@ -29,4 +31,18 @@ void CommandSender::reset() const {
 
 Microsoft::WRL::ComPtr<ID3D12CommandQueue> CommandSender::getCommandQueue() const {
     return cmdQueue;
+}
+
+void CommandSender::waitOnGPU(const Microsoft::WRL::ComPtr<ID3D12Device>& device) const {
+    Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+    UINT64 fenceValue = 1;
+    HANDLE fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+
+    cmdQueue->Signal(fence.Get(), fenceValue);
+    if(fence->GetCompletedValue() < fenceValue) {
+        fence->SetEventOnCompletion(fenceValue, fenceEvent);
+        WaitForSingleObject(fenceEvent, INFINITE);
+    }
+    CloseHandle(fenceEvent);
 }
