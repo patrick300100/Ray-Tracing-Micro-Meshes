@@ -397,3 +397,10 @@ void GPUState::createDepthBuffer() {
 
     device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsvDesc, dsvHeap->GetCPUDescriptorHandleForHeapStart());
 }
+
+glm::uvec2 GPUState::getRenderDimension() const {
+    const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
+    const auto dim = mainRenderTargetResource[backBufferIdx]->GetDesc();
+
+    return {dim.Width, dim.Height};
+}
