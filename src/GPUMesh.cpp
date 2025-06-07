@@ -77,7 +77,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMe
     cs.createSRV<SimpleTriangle>(triangleBuffer.getBuffer());
     cs.createUAV<D3D12_RAYTRACING_AABB>(outputBuffer.getBuffer());
 
-    auto AABBs = cs.execute<D3D12_RAYTRACING_AABB>(outputBuffer.getBuffer(), triangles.size());
+    AABBs = cs.execute<D3D12_RAYTRACING_AABB>(outputBuffer.getBuffer(), triangles.size());
 
     //Get an 'upgraded' version of our device and command list
     ComPtr<ID3D12Device5> device5;
@@ -137,9 +137,10 @@ GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
     nIndices(other.nIndices),
     vertexBuffer(std::move(other.vertexBuffer)),
     indexBuffer(std::move(other.indexBuffer)),
-    cpuMesh(std::move(other.cpuMesh)),
+    AABBs(std::move(other.AABBs)),
     blasBuffer(std::move(other.blasBuffer)),
-    tlasBuffer(std::move(other.tlasBuffer))
+    tlasBuffer(std::move(other.tlasBuffer)),
+    cpuMesh(std::move(other.cpuMesh))
 {
 }
 
@@ -151,6 +152,7 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
         indexBufferView = other.indexBufferView;
         vertexBuffer = std::move(other.vertexBuffer);
         indexBuffer = std::move(other.indexBuffer);
+        AABBs = std::move(other.AABBs);
         nIndices = other.nIndices;
         blasBuffer = std::move(other.blasBuffer);
         tlasBuffer = std::move(other.tlasBuffer);
@@ -297,3 +299,12 @@ void GPUMesh::createTLAS(
     barrier.UAV.pResource = tlasBuffer.getBuffer().Get();
     cmdList4->ResourceBarrier(1, &barrier);
 }
+
+ComPtr<ID3D12Resource> GPUMesh::getTLASBuffer() const {
+    return tlasBuffer.getBuffer();
+}
+
+std::vector<D3D12_RAYTRACING_AABB> GPUMesh::getAABBs() const {
+    return AABBs;
+}
+

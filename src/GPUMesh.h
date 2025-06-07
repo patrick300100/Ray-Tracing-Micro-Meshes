@@ -22,6 +22,7 @@ class GPUMesh {
     ComPtr<ID3D12Resource> vertexBuffer;
     ComPtr<ID3D12Resource> indexBuffer;
 
+    std::vector<D3D12_RAYTRACING_AABB> AABBs;
     DefaultBuffer<void> blasBuffer;
     DefaultBuffer<void> tlasBuffer;
 
@@ -60,4 +61,6 @@ public:
     [[nodiscard]] D3D12_VERTEX_BUFFER_VIEW getVertexBufferView() const;
     [[nodiscard]] D3D12_INDEX_BUFFER_VIEW getIndexBufferView() const;
     [[nodiscard]] UINT getIndexCount() const;
+    [[nodiscard]] ComPtr<ID3D12Resource> getTLASBuffer() const;
+    std::vector<D3D12_RAYTRACING_AABB> getAABBs() const;
 };
