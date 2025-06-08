@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 #include <functional>
 #include <glm/vec2.hpp>
+#include <glm/vec4.hpp>
 
 #include "RasterizationShader.h"
 #include "shader.h"
@@ -105,9 +106,9 @@ public:
     [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Device> get_device() const;
     [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
-    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const Shader& shader);
+    void renderFrame(const glm::vec4& clearColor, const glm::uvec2& dimension, const std::function<void()>& render, const Shader& shader);
 
-    void createDepthBuffer();
+    void createDepthBuffer(const glm::uvec2& dimension);
     void createPipeline(const RasterizationShader& shaders);
 
     void drawMesh(D3D12_VERTEX_BUFFER_VIEW vbv, D3D12_INDEX_BUFFER_VIEW ibv, UINT nIndices) const;

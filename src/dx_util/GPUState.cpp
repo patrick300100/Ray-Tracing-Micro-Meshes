@@ -237,7 +237,7 @@ void GPUState::initImGui() const {
     ImGui_ImplDX12_Init(device.Get(), APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap.Get(), srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
 }
 
-void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const Shader& shader) {
+void GPUState::renderFrame(const glm::vec4& clearColor, const glm::uvec2& dimension, const std::function<void()>& render, const Shader& shader) {
     FrameContext* frameCtx = waitForNextFrameResources();
     const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
     frameCtx->commandAllocator->Reset();
@@ -252,13 +252,11 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     commandList->Reset(frameCtx->commandAllocator.Get(), nullptr);
     commandList->ResourceBarrier(1, &barrier);
 
-    auto rtDesc = mainRenderTargetResource[backBufferIdx]->GetDesc();
-
     D3D12_VIEWPORT viewport = {};
     viewport.TopLeftX = 0;
     viewport.TopLeftY = 0;
-    viewport.Width = static_cast<float>(rtDesc.Width);
-    viewport.Height = static_cast<float>(rtDesc.Height);
+    viewport.Width = static_cast<float>(dimension.x);
+    viewport.Height = static_cast<float>(dimension.y);
     viewport.MinDepth = 0.1f;
     viewport.MaxDepth = 1.0f;
     commandList->RSSetViewports(1, &viewport);
@@ -266,8 +264,8 @@ void GPUState::renderFrame(const ImVec4& clearColor, const std::function<void()>
     D3D12_RECT scissorRect = {};
     scissorRect.left = 0;
     scissorRect.top = 0;
-    scissorRect.right = static_cast<LONG>(rtDesc.Width);
-    scissorRect.bottom = static_cast<LONG>(rtDesc.Height);
+    scissorRect.right = static_cast<LONG>(dimension.x);
+    scissorRect.bottom = static_cast<LONG>(dimension.y);
     commandList->RSSetScissorRects(1, &scissorRect);
 
     const float clear_color_with_alpha[4] = { clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w };
@@ -359,14 +357,12 @@ void GPUState::setConstantBuffer(const UINT index, const Microsoft::WRL::ComPtr<
     commandList->SetGraphicsRootConstantBufferView(index, bufferPtr->GetGPUVirtualAddress());
 }
 
-void GPUState::createDepthBuffer() {
-    D3D12_RESOURCE_DESC backBufferDesc = mainRenderTargetResource[0]->GetDesc();
-
+void GPUState::createDepthBuffer(const glm::uvec2& dimension) {
     D3D12_RESOURCE_DESC depthDesc = {};
     depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     depthDesc.Alignment = 0;
-    depthDesc.Width = backBufferDesc.Width;
-    depthDesc.Height = backBufferDesc.Height;
+    depthDesc.Width = dimension.x;
+    depthDesc.Height = dimension.y;
     depthDesc.DepthOrArraySize = 1;
     depthDesc.MipLevels = 1;
     depthDesc.Format = DXGI_FORMAT_D32_FLOAT;

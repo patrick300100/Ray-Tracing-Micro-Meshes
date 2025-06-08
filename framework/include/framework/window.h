@@ -6,6 +6,7 @@
 // Suppress warnings in third-party code.
 DISABLE_WARNINGS_PUSH()
 #include <GLFW/glfw3.h>
+#include <glm/vec4.hpp>
 #include <glm/vec2.hpp>
 DISABLE_WARNINGS_POP()
 #include <functional>
@@ -55,6 +56,7 @@ private:
 	HWND hwnd;
 	bool done = false;
 	float m_dpiScalingFactor = 1.0f;
+	glm::vec4 backgroundColor{0.29f, 0.29f, 0.29f, 1.00f};
 
 	static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -72,6 +74,14 @@ public:
 
 	[[nodiscard]] HWND getHWND() const;
 	[[nodiscard]] WNDCLASSEXW getWc() const;
+
+	/**
+	 * Gets the dimension of the window where actually can be rendered too. This is the whole window size, minus the title
+	 * bar at the top and possible borders on the side. This is also known as the client area.
+	 */
+	[[nodiscard]] glm::uvec2 getRenderDimension() const;
+
+	[[nodiscard]] glm::vec4 getBackgroundColor() const;
 };
 
 struct WindowData {

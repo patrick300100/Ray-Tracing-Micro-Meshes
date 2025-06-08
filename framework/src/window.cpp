@@ -278,3 +278,16 @@ HWND Window::getHWND() const {
 WNDCLASSEXW Window::getWc() const {
     return wc;
 }
+
+glm::uvec2 Window::getRenderDimension() const {
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    int w = clientRect.right  - clientRect.left;
+    int h = clientRect.bottom - clientRect.top;
+
+    return {w, h};
+}
+
+glm::vec4 Window::getBackgroundColor() const {
+    return backgroundColor;
+}
