@@ -31,7 +31,7 @@ struct SimpleVertex {
     glm::vec3 displacement;
 };
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMesh(cpuMesh) {
+GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuMesh(cpuMesh) {
     //Convert mesh vertices to SimpleVertex
     std::vector<SimpleVertex> vertices;
     vertices.reserve(cpuMesh.vertices.size());
@@ -52,6 +52,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMe
     }
 
     CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_COMPUTE);
+    cw.reset();
 
     //Create buffers for on the GPU and upload data to those buffers
     DefaultBuffer<SimpleVertex> baseVertexBuffer(device, vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
@@ -78,20 +79,13 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device): cpuMe
 
     AABBs = cs.execute<D3D12_RAYTRACING_AABB>(outputBuffer.getBuffer(), triangles.size());
 
-    //Get an 'upgraded' version of our device and command list
-    ComPtr<ID3D12Device5> device5;
-    device->QueryInterface(IID_PPV_ARGS(&device5));
-
-    ComPtr<ID3D12GraphicsCommandList4> cmdList4;
-    cw.getCommandList()->QueryInterface(IID_PPV_ARGS(&cmdList4));
-
     //Create BLAS AND TLAS
     DefaultBuffer<void> scratchBufferBLAS;
-    createBLAS(device5, cmdList4, triangles.size(), outputBuffer.getBuffer(), scratchBufferBLAS);
+    createBLAS(device, cw.getCommandList(), triangles.size(), outputBuffer.getBuffer(), scratchBufferBLAS);
 
     DefaultBuffer<void> scratchBufferTLAS;
     UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC> instanceBuffer(device, 1);
-    createTLAS(device5, cmdList4, scratchBufferTLAS, instanceBuffer);
+    createTLAS(device, cw.getCommandList(), scratchBufferTLAS, instanceBuffer);
 
     cw.execute(device);
 
@@ -159,7 +153,7 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device>& device) {
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device5>& device) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
 
     GLTFReadInfo read_micromesh;

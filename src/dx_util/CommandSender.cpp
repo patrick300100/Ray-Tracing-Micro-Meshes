@@ -1,8 +1,10 @@
 #include "CommandSender.h"
 
-CommandSender::CommandSender(const Microsoft::WRL::ComPtr<ID3D12Device>& device, const D3D12_COMMAND_LIST_TYPE cmdListType) {
+#include <iostream>
+
+CommandSender::CommandSender(const Microsoft::WRL::ComPtr<ID3D12Device5>& device, const D3D12_COMMAND_LIST_TYPE cmdListType) {
     device->CreateCommandAllocator(cmdListType, IID_PPV_ARGS(&allocator));
-    device->CreateCommandList(0, cmdListType, allocator.Get(), nullptr, IID_PPV_ARGS(&cmdList));
+    device->CreateCommandList1(0, cmdListType, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&cmdList));
 
     D3D12_COMMAND_QUEUE_DESC desc = {};
     desc.Type = cmdListType;
@@ -11,12 +13,13 @@ CommandSender::CommandSender(const Microsoft::WRL::ComPtr<ID3D12Device>& device,
     device->CreateCommandQueue(&desc, IID_PPV_ARGS(&cmdQueue));
 }
 
-Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> CommandSender::getCommandList() const {
+Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> CommandSender::getCommandList() const {
     return cmdList;
 }
 
 void CommandSender::execute(const Microsoft::WRL::ComPtr<ID3D12Device>& device) const {
-    cmdList->Close();
+    HRESULT hr = cmdList->Close();
+    if(FAILED(hr)) std::cout << "Uh-oh...\n";
 
     ID3D12CommandList* lists[] = { cmdList.Get() };
     cmdQueue->ExecuteCommandLists(_countof(lists), lists);

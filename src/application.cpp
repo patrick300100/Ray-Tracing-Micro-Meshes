@@ -20,6 +20,14 @@ DISABLE_WARNINGS_POP()
 #include <ranges>
 #include <framework/trackball.h>
 
+#ifdef _DEBUG
+#define DX12_ENABLE_DEBUG_LAYER
+#endif
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+#pragma comment(lib, "dxguid.lib")
+#endif
+
 struct RayTraceVertex {
     glm::vec3 position;
 };
@@ -35,7 +43,12 @@ struct AABB {
 class Application {
 public:
     Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState) {
-        if(!gpuState.createDevice(window.getHWND())) {
+        createDevice();
+
+        swapChainCS = CommandSender(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+        createSwapchain(window.getHWND());
+
+        if(!gpuState.createDevice(device, swapChain)) {
             gpuState.cleanupDevice();
             UnregisterClassW(window.getWc().lpszClassName, window.getWc().hInstance);
             exit(1);
@@ -46,13 +59,14 @@ public:
         gpuState.initImGui();
         gpuState.createDepthBuffer(dimensions);
 
-        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, gpuState.get_device());
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, device);
 
         skinningShader = RasterizationShader(L"shaders/skinningVS.hlsl", L"shaders/skinningPS.hlsl", 5, gpuState.get_device());
 
         //Creating ray tracing shader
         {
-            CommandSender cw(gpuState.get_device(), D3D12_COMMAND_LIST_TYPE_DIRECT);
+            CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+            cw.reset();
 
             rtShader = RayTraceShader(
                RESOURCE_ROOT L"shaders/raygen.hlsl",
@@ -177,13 +191,52 @@ public:
     void update() {
         while (window.shouldClose()) {
             window.updateInput();
-            Window::prepareFrame();
+            //Window::prepareFrame();
 
             if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
 
-            menu();
+            //menu();
             //gpuState.renderFrame(window.getBackgroundColor(), window.getRenderDimension(), [this] { render(); }, skinningShader);
-            gpuState.renderRaytracedScene(rtShader, raytracingOutput);
+            //gpuState.renderRaytracedScene(rtShader, raytracingOutput);
+
+
+
+
+
+            swapChainCS.reset();
+
+            swapChainCS.getCommandList()->SetPipelineState1(rtShader.pipelineStateObject.Get());
+            swapChainCS.getCommandList()->SetComputeRootSignature(rtShader.globalRootSignature.Get());
+            swapChainCS.getCommandList()->SetDescriptorHeaps(1, rtShader.descriptorHeap.GetAddressOf());
+            swapChainCS.getCommandList()->SetComputeRootDescriptorTable(0, rtShader.descriptorHeap->GetGPUDescriptorHandleForHeapStart());
+
+            swapChainCS.getCommandList()->DispatchRays(&rtShader.dispatchDesc);
+
+            //Getting the back buffer
+            ComPtr<ID3D12Resource> backBuffer;
+            swapChain->GetBuffer(swapChain->GetCurrentBackBufferIndex(), IID_PPV_ARGS(&backBuffer));
+
+            //Lambda function that creates a transition barrier and puts it into the command list
+            auto barrier = [&](auto* resource, auto before, auto after) {
+                auto rb = CD3DX12_RESOURCE_BARRIER::Transition(resource, before, after);
+                swapChainCS.getCommandList()->ResourceBarrier(1, &rb);
+            };
+
+            //Wait 'till we're sure that all the results are written to the output texture
+            auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(raytracingOutput.Get());
+            swapChainCS.getCommandList()->ResourceBarrier(1, &uavBarrier);
+
+            barrier(raytracingOutput.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            barrier(backBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_DEST);
+
+            swapChainCS.getCommandList()->CopyResource(backBuffer.Get(), raytracingOutput.Get());
+
+            barrier(backBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
+            barrier(raytracingOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+            swapChainCS.execute(device);
+
+            swapChain->Present(1, 0);
         }
     }
 
@@ -194,6 +247,11 @@ public:
 private:
     GPUState gpuState;
     Window window;
+
+    ComPtr<ID3D12Device5> device;
+
+    ComPtr<IDXGISwapChain3> swapChain;
+    CommandSender swapChainCS; //Command queue and such for the swapchain
 
     RasterizationShader skinningShader;
 
@@ -274,6 +332,66 @@ private:
         QueryPerformanceCounter(&now);
 
         return static_cast<double>(now.QuadPart - start.QuadPart) / frequency.QuadPart;
+    }
+
+    void createDevice() {
+        // [DEBUG] Enable debug interface
+#ifdef DX12_ENABLE_DEBUG_LAYER
+        ID3D12Debug1* pdx12Debug = nullptr;
+        if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug)))) pdx12Debug->EnableDebugLayer();
+#endif
+
+        D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device));
+
+        // [DEBUG] Setup debug interface to break on any warnings/errors
+#ifdef DX12_ENABLE_DEBUG_LAYER
+        if(pdx12Debug != nullptr) {
+            ID3D12InfoQueue* pInfoQueue = nullptr;
+            device->QueryInterface(IID_PPV_ARGS(&pInfoQueue));
+
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+            pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+
+            D3D12_MESSAGE_ID denyIDs[] = {
+                D3D12_MESSAGE_ID_CREATERESOURCE_STATE_IGNORED, //Harmless error about default heap
+            };
+
+            D3D12_INFO_QUEUE_FILTER filter = {};
+            filter.DenyList.NumIDs = _countof(denyIDs);
+            filter.DenyList.pIDList = denyIDs;
+            pInfoQueue->AddStorageFilterEntries(&filter);
+
+            pInfoQueue->Release();
+            pdx12Debug->Release();
+        }
+#endif
+    }
+
+    void createSwapchain(HWND hWnd) {
+        // Setup swap chain
+        DXGI_SWAP_CHAIN_DESC1 sd;
+        ZeroMemory(&sd, sizeof(sd));
+        sd.BufferCount = 2;
+        sd.Width = 0;
+        sd.Height = 0;
+        sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.SampleDesc.Count = 1;
+        sd.SampleDesc.Quality = 0;
+        sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+        sd.Scaling = DXGI_SCALING_STRETCH;
+        sd.Stereo = FALSE;
+
+        IDXGIFactory4* dxgiFactory = nullptr;
+        IDXGISwapChain1* swapChain1 = nullptr;
+        CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
+        dxgiFactory->CreateSwapChainForHwnd(swapChainCS.getCommandQueue().Get(), hWnd, &sd, nullptr, nullptr, &swapChain1);
+        swapChain1->QueryInterface(IID_PPV_ARGS(&swapChain));
+        swapChain1->Release();
+        dxgiFactory->Release();
     }
 };
 

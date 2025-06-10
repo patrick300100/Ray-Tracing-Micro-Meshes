@@ -45,14 +45,14 @@ class GPUMesh {
 public:
     Mesh cpuMesh;
 
-    GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device>& device);
+    GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device);
     GPUMesh(const GPUMesh&) = delete;
     GPUMesh(GPUMesh&& other) noexcept;
 
     GPUMesh& operator=(const GPUMesh&) = delete;
     GPUMesh& operator=(GPUMesh&& other) noexcept;
 
-    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device>& device);
+    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device);
 
     void drawWireframe(const glm::mat4& mvp, float displacementScale) const;
 
