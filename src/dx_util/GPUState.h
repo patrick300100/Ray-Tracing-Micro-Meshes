@@ -9,6 +9,7 @@
 #include <glm/vec4.hpp>
 
 #include "RasterizationShader.h"
+#include "RayTraceShader.h"
 #include "shader.h"
 
 struct FrameContext {
@@ -115,5 +116,5 @@ public:
 
     void setConstantBuffer(UINT index, const Microsoft::WRL::ComPtr<ID3D12Resource>& bufferPtr) const;
 
-    [[nodiscard]] glm::uvec2 getRenderDimension() const;
+    void renderRaytracedScene(const RayTraceShader& shader, const ComPtr<ID3D12Resource>& raytracingOutput);
 };

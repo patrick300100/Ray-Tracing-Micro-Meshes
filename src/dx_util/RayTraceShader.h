@@ -5,6 +5,8 @@
 #include <wrl/client.h>
 #include <dxcapi.h>
 #include <vector>
+
+#include "UploadBuffer.h"
 #pragma comment(lib, "dxcompiler.lib")
 
 using namespace Microsoft::WRL;
@@ -17,12 +19,14 @@ enum BufferType {
 
 class RayTraceShader {
     std::vector<ComPtr<IDxcBlob>> shaders;
-    ComPtr<ID3D12Device> device;
+    ComPtr<ID3D12Device5> device;
     D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle{};
-    ComPtr<ID3D12DescriptorHeap> descriptorHeap;
     UINT descriptorSize{};
     ComPtr<ID3D12RootSignature> localRootSignature;
-    ComPtr<ID3D12RootSignature> globalRootSignature;
+
+    ComPtr<ID3D12StateObjectProperties> pipelineProps;
+
+    UploadBuffer<void*> rayGenSBTBuffer, missSBTBuffer, hitGroupSBTBuffer;
 
     enum RootSignatureType {
         GLOBAL,
@@ -33,6 +37,11 @@ class RayTraceShader {
     void initBuffers(const std::vector<std::pair<BufferType, int>>& buffers, RootSignatureType type);
 
 public:
+    D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
+    ComPtr<ID3D12StateObject> pipelineStateObject;
+    ComPtr<ID3D12RootSignature> globalRootSignature;
+    ComPtr<ID3D12DescriptorHeap> descriptorHeap;
+
     RayTraceShader() = default;
     RayTraceShader(
         const LPCWSTR& rayGenFile,
@@ -41,10 +50,16 @@ public:
         const LPCWSTR& intersectionFile,
         const std::vector<std::pair<BufferType, int>>& buffersLocal,
         const std::vector<std::pair<BufferType, int>>& buffersGlobal,
-        const ComPtr<ID3D12Device>& device
+        const ComPtr<ID3D12Device>& d
     );
 
-    void setDescriptorHeap(const ComPtr<ID3D12GraphicsCommandList>& cmdList);
+    void createPipeline();
+    void createSBT(UINT w, UINT h); //swapchain width and height
+
+    [[nodiscard]] ComPtr<IDxcBlob> getRayGenShader() const;
+    [[nodiscard]] ComPtr<IDxcBlob> getMissShader() const;
+    [[nodiscard]] ComPtr<IDxcBlob> getClosestHitShader() const;
+    [[nodiscard]] ComPtr<IDxcBlob> getIntersectionShader() const;
 
     /**
      * Creates an SRV for the TLAS buffer.
@@ -90,7 +105,7 @@ public:
      */
     void createOutputUAV(const ComPtr<ID3D12Resource>& buffer) {
         D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-        uavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
         uavDesc.Texture2D.MipSlice = 0;
 

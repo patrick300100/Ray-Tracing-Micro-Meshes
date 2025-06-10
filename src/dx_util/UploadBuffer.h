@@ -53,7 +53,11 @@ public:
     }
 
     void upload(const std::vector<T>& data) {
-        memcpy(mappedPtr, data.data(), data.size() * sizeof(T));
+        upload(data, data.size() * sizeof(T));
+    }
+
+    void upload(const std::vector<T>& data, const size_t size) {
+        memcpy(mappedPtr, data.data(), size);
     }
 
     UploadBuffer(const UploadBuffer&) = delete;

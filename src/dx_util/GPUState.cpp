@@ -1,6 +1,8 @@
 #include "GPUState.h"
 
 #include <d3dx12.h>
+#include <iomanip>
+#include <iostream>
 #include <../../framework/include/framework/mesh.h>
 #include <../../framework/third_party/imgui/include/imgui/imgui_impl_dx12.h>
 #include "../../src/dx_util/RasterizationShader.h"
@@ -13,6 +15,8 @@
 #include <dxgidebug.h>
 #pragma comment(lib, "dxguid.lib")
 #endif
+
+#include <comdef.h>
 
 Microsoft::WRL::ComPtr<ID3D12Device> GPUState::get_device() const {
     return device;
@@ -49,9 +53,16 @@ bool GPUState::createDevice(const HWND hWnd) {
 
     // [DEBUG] Enable debug interface
 #ifdef DX12_ENABLE_DEBUG_LAYER
-    ID3D12Debug* pdx12Debug = nullptr;
-    if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug))))
-        pdx12Debug->EnableDebugLayer();
+    ID3D12Debug1* pdx12Debug = nullptr;
+    if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug)))) pdx12Debug->EnableDebugLayer();
+
+    pdx12Debug->SetEnableGPUBasedValidation(TRUE);
+
+    ComPtr<ID3D12DeviceRemovedExtendedDataSettings> pDredSettings;
+    D3D12GetDebugInterface(IID_PPV_ARGS(&pDredSettings));
+
+    pDredSettings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    pDredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
 #endif
 
     // Create device
@@ -278,7 +289,7 @@ void GPUState::renderFrame(const glm::vec4& clearColor, const glm::uvec2& dimens
     commandList->SetDescriptorHeaps(1, heap);
     commandList->SetGraphicsRootSignature(shader.getRootSignature().Get());
 
-    commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 1, &scissorRect);
 
     render(); //Render mesh and other drawable objects
 
@@ -394,9 +405,179 @@ void GPUState::createDepthBuffer(const glm::uvec2& dimension) {
     device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsvDesc, dsvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-glm::uvec2 GPUState::getRenderDimension() const {
-    const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
-    const auto dim = mainRenderTargetResource[backBufferIdx]->GetDesc();
+const char* D3D12AutoBreadcrumbOpToString(D3D12_AUTO_BREADCRUMB_OP op) {
+    switch(op) {
+        case 46: return "D3D12_AUTO_BREADCRUMB_OP_BEGIN_COMMAND_LIST";
+        case 15: return "D3D12_AUTO_BREADCRUMB_OP_RESOURCEBARRIER";
+        case 7: return "D3D12_AUTO_BREADCRUMB_OP_COPYBUFFERREGION";
+        case 34: return "D3D12_AUTO_BREADCRUMB_OP_DISPATCHRAYS";
+        case 9: return "D3D12_AUTO_BREADCRUMB_OP_COPYRESOURCE";
+        default: return "Unknown";
+    }
+}
 
-    return {dim.Width, dim.Height};
+void PrintDREDPageFaultInfo(const D3D12_DRED_PAGE_FAULT_OUTPUT& pageFault) {
+    std::wcout << L"\n========== DRED Page Fault Info ==========\n";
+    std::wcout << L"  Page Fault GPU Virtual Address: 0x"
+               << std::hex << std::setw(16) << std::setfill(L'0') << pageFault.PageFaultVA << L"\n\n";
+
+    auto PrintAllocList = [](const D3D12_DRED_ALLOCATION_NODE* node, const wchar_t* label) {
+        std::wcout << label << L"\n";
+        if (!node) {
+            std::wcout << L"  (None)\n";
+            return;
+        }
+
+        while (node) {
+            std::wstring name;
+            if (node->ObjectNameW) {
+                name = node->ObjectNameW;
+            } else if (node->ObjectNameA) {
+                name = L"(name in ObjectNameA)";
+            } else {
+                name = L"(unnamed)";
+            }
+
+            const wchar_t* type = L"Unknown";
+            switch (node->AllocationType) {
+                case D3D12_DRED_ALLOCATION_TYPE_COMMAND_QUEUE:      type = L"CommandQueue"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_COMMAND_ALLOCATOR:  type = L"CommandAllocator"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_PIPELINE_STATE:     type = L"PipelineState"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_COMMAND_LIST:       type = L"CommandList"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_FENCE:              type = L"Fence"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_DESCRIPTOR_HEAP:    type = L"DescriptorHeap"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_HEAP:               type = L"Heap"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_RESOURCE:           type = L"Resource"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_QUERY_HEAP:         type = L"QueryHeap"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_VIDEO_DECODER:      type = L"VideoDecoder"; break;
+                case D3D12_DRED_ALLOCATION_TYPE_VIDEO_PROCESSOR:    type = L"VideoProcessor"; break;
+                default: break;
+            }
+
+            std::wcout << L"  - Name: " << name << L"\n"
+                       << L"    Type: " << type << L"\n\n";
+
+            node = node->pNext;
+        }
+    };
+
+    PrintAllocList(pageFault.pHeadExistingAllocationNode, L"Live Allocations at Time of Fault:");
+    PrintAllocList(pageFault.pHeadRecentFreedAllocationNode, L"Recently Freed Allocations:");
+}
+
+void GPUState::renderRaytracedScene(const RayTraceShader& shader, const ComPtr<ID3D12Resource>& raytracingOutput) {
+    FrameContext* frameCtx = waitForNextFrameResources();
+    const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
+    frameCtx->commandAllocator->Reset();
+    commandList->Reset(frameCtx->commandAllocator.Get(), nullptr);
+
+    const auto pToR = CD3DX12_RESOURCE_BARRIER::Transition(mainRenderTargetResource[backBufferIdx].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commandList->ResourceBarrier(1, &pToR);
+
+    ID3D12DescriptorHeap* heaps[] = { shader.descriptorHeap.Get() };
+    commandList->SetDescriptorHeaps(_countof(heaps), heaps);
+
+    ComPtr<ID3D12GraphicsCommandList4> cmdList4;
+    commandList->QueryInterface(IID_PPV_ARGS(&cmdList4));
+
+    cmdList4->SetPipelineState1(shader.pipelineStateObject.Get());
+    cmdList4->SetComputeRootSignature(shader.globalRootSignature.Get());
+    cmdList4->SetComputeRootDescriptorTable(0, shader.descriptorHeap->GetGPUDescriptorHandleForHeapStart());
+    cmdList4->DispatchRays(&shader.dispatchDesc);
+
+    auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(raytracingOutput.Get());
+    commandList->ResourceBarrier(1, &uavBarrier);
+
+    D3D12_RESOURCE_BARRIER uavToCopy{};
+    uavToCopy.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    uavToCopy.Transition.pResource = raytracingOutput.Get();
+    uavToCopy.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    uavToCopy.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    uavToCopy.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &uavToCopy);
+
+    D3D12_RESOURCE_BARRIER bbToCopy{};
+    bbToCopy.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    bbToCopy.Transition.pResource = mainRenderTargetResource[backBufferIdx].Get();
+    bbToCopy.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    bbToCopy.Transition.StateAfter  = D3D12_RESOURCE_STATE_COPY_DEST;
+    bbToCopy.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &bbToCopy);
+
+    commandList->CopyResource(mainRenderTargetResource[backBufferIdx].Get(), raytracingOutput.Get());
+
+    const auto copyToUAV = CD3DX12_RESOURCE_BARRIER::Transition(raytracingOutput.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commandList->ResourceBarrier(1, &copyToUAV);
+
+    // Transition back buffer to render target for ImGui draw
+    D3D12_RESOURCE_BARRIER toRTV{};
+    toRTV.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    toRTV.Transition.pResource = mainRenderTargetResource[backBufferIdx].Get();
+    toRTV.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    toRTV.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    toRTV.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &toRTV);
+
+    ID3D12DescriptorHeap* heaps2[] = { srvDescHeap.Get() };
+    commandList->SetDescriptorHeaps(_countof(heaps2), heaps2);
+
+    ImGui::Render();
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
+
+    D3D12_RESOURCE_BARRIER toPresent{};
+    toPresent.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    toPresent.Transition.pResource = mainRenderTargetResource[backBufferIdx].Get();
+    toPresent.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    toPresent.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    toPresent.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    commandList->ResourceBarrier(1, &toPresent);
+
+    commandList->Close();
+    ID3D12CommandList* cmdLists[] = { commandList.Get() };
+    commandQueue->ExecuteCommandLists(1, cmdLists);
+
+    HRESULT hr = swapChain->Present(1, 0);
+    if(FAILED(hr)) {
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_HUNG) {
+            ComPtr<ID3D12DeviceRemovedExtendedData> dred;
+            if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&dred)))) {
+                D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT breadcrumbs = {};
+                if (SUCCEEDED(dred->GetAutoBreadcrumbsOutput(&breadcrumbs))) {
+                    const D3D12_AUTO_BREADCRUMB_NODE* node = breadcrumbs.pHeadAutoBreadcrumbNode;
+                    while (node) {
+                        // Optional: get the command list name (if you called SetName on it)
+                        if (node->pCommandListDebugNameA) {
+                            std::cout << "Command List: " << node->pCommandListDebugNameA << std::endl;
+                            //printf("Command List: %s\n", node->pCommandListDebugNameA);
+                        }
+
+                        // Iterate through the breadcrumb operations
+                        for (UINT i = 0; i < node->BreadcrumbCount; ++i) {
+                            D3D12_AUTO_BREADCRUMB_OP op = node->pCommandHistory[i];
+                            std::cout << "  Operation " << i << ": " << D3D12AutoBreadcrumbOpToString(op) << std::endl;
+                            //printf("  Operation %u: %s\n", i, D3D12AutoBreadcrumbOpToString(op));
+                        }
+
+                        // See where the GPU was when it crashed
+                        std::cout << "  Last completed op index: " << *node->pLastBreadcrumbValue << std::endl;
+                        //printf("  Last completed op index: %u\n", *node->pLastBreadcrumbValue);
+
+                        // Move to the next node
+                        node = node->pNext;
+                    }
+                }
+
+                D3D12_DRED_PAGE_FAULT_OUTPUT pageFault = {};
+                if (SUCCEEDED(dred->GetPageFaultAllocationOutput(&pageFault))) {
+                    PrintDREDPageFaultInfo(pageFault);
+                }
+            }
+        }
+    }
+    swapChainOccluded = hr == DXGI_STATUS_OCCLUDED;
+
+    UINT64 fenceValue = fenceLastSignaledValue + 1;
+    commandQueue->Signal(fence.Get(), fenceValue);
+    fenceLastSignaledValue = fenceValue;
+    frameCtx->fenceValue = fenceValue;
 }
