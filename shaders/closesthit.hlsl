@@ -56,7 +56,7 @@ float3 fresnelSchlick(float cosTheta, float3 F0) {
 [shader("closesthit")]
 void main(inout Payload payload, in Attributes attribs) {
     // surface normal
-    float3 N = attribs.N;
+    float3 N = abs(attribs.N);
 
     // view direction
     float3 V = attribs.V;
