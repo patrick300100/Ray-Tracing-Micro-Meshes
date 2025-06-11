@@ -135,7 +135,7 @@ public:
 
             rtShader.createOutputUAV(raytracingOutput);
 
-            glm::mat4 invViewProj = glm::transpose(glm::inverse(projectionMatrix * trackball->viewMatrix()));
+            glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
 
             invViewProjBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 1, true);
             invViewProjBuffer.getBuffer()->SetName(L"Inverse view-projection matrix");
@@ -193,7 +193,7 @@ public:
             window.updateInput();
             //Window::prepareFrame();
 
-            if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
+            //if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
 
             //menu();
             //gpuState.renderFrame(window.getBackgroundColor(), window.getRenderDimension(), [this] { render(); }, skinningShader);
@@ -202,6 +202,8 @@ public:
 
 
 
+            glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
+            invViewProjBuffer.upload({invViewProj});
 
             swapChainCS.reset();
 

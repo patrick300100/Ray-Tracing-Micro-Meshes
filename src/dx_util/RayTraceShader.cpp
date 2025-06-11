@@ -268,36 +268,84 @@ void RayTraceShader::createSBT(const UINT w, const UINT h) {
         std::cout << "Uh-oh...\n";
     }
 
-    void* rayGenId = stateObjectProps->GetShaderIdentifier(L"RGMain");
-    void* missId = stateObjectProps->GetShaderIdentifier(L"MissMain");
-    void* hitGroupId = stateObjectProps->GetShaderIdentifier(L"MyHitGroup");
+    void* data;
+    auto writeId = [&](const wchar_t* name) {
+        void* id = stateObjectProps->GetShaderIdentifier(name);
+        memcpy(data, id, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+        data = static_cast<char*>(data) + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+    };
 
-    UINT shaderIdSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-    UINT shaderRecordAlignment = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
+    D3D12_RESOURCE_DESC BASIC_BUFFER_DESC = {
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Width = 0, // Will be changed in copies
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .SampleDesc = {.Count = 1, .Quality = 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR};
 
-    UINT64 recordSize = alignUp(D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, shaderRecordAlignment);
+    D3D12_HEAP_PROPERTIES UPLOAD_HEAP = {.Type = D3D12_HEAP_TYPE_UPLOAD};
+    auto idDesc = BASIC_BUFFER_DESC;
+    idDesc.Width = 3 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
+    device->CreateCommittedResource(&UPLOAD_HEAP, D3D12_HEAP_FLAG_NONE, &idDesc,
+                                    D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                    IID_PPV_ARGS(&shaderIDs));
 
-    rayGenSBTBuffer = UploadBuffer<void*>(recordSize, device);
-    rayGenSBTBuffer.upload({rayGenId}, shaderIdSize);
+    shaderIDs->Map(0, nullptr, &data);
+    writeId(L"RGMain");
+    writeId(L"MissMain");
+    writeId(L"MyHitGroup");
+    shaderIDs->Unmap(0, nullptr);
 
-    missSBTBuffer = UploadBuffer<void*>(recordSize, device);
-    missSBTBuffer.upload({missId}, shaderIdSize);
 
-    hitGroupSBTBuffer = UploadBuffer<void*>(recordSize, device);
-    hitGroupSBTBuffer.upload({hitGroupId}, shaderIdSize);
+    dispatchDesc = {
+        .RayGenerationShaderRecord = {
+            .StartAddress = shaderIDs->GetGPUVirtualAddress(),
+            .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
+        .MissShaderTable = {
+            .StartAddress = shaderIDs->GetGPUVirtualAddress() + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
+            .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
+        .HitGroupTable = {
+            .StartAddress = shaderIDs->GetGPUVirtualAddress() + 2 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
+            .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
+        .Width = static_cast<UINT>(w),
+        .Height = h,
+        .Depth = 1
+    };
 
-    dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenSBTBuffer.getBuffer()->GetGPUVirtualAddress();
-    dispatchDesc.RayGenerationShaderRecord.SizeInBytes = recordSize;
 
-    dispatchDesc.MissShaderTable.StartAddress = missSBTBuffer.getBuffer()->GetGPUVirtualAddress();
-    dispatchDesc.MissShaderTable.SizeInBytes = recordSize;
-    dispatchDesc.MissShaderTable.StrideInBytes = recordSize;
 
-    dispatchDesc.HitGroupTable.StartAddress = hitGroupSBTBuffer.getBuffer()->GetGPUVirtualAddress();
-    dispatchDesc.HitGroupTable.SizeInBytes = recordSize;
-    dispatchDesc.HitGroupTable.StrideInBytes = recordSize;
 
-    dispatchDesc.Width = w;
-    dispatchDesc.Height = h;
-    dispatchDesc.Depth = 1;
+    // void* rayGenId = stateObjectProps->GetShaderIdentifier(L"RGMain");
+    // void* missId = stateObjectProps->GetShaderIdentifier(L"MissMain");
+    // void* hitGroupId = stateObjectProps->GetShaderIdentifier(L"MyHitGroup");
+    //
+    // UINT shaderIdSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+    // UINT shaderRecordAlignment = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
+    //
+    // UINT64 recordSize = alignUp(D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, shaderRecordAlignment);
+    //
+    // rayGenSBTBuffer = UploadBuffer<void*>(recordSize, device);
+    // rayGenSBTBuffer.upload({rayGenId}, shaderIdSize);
+    //
+    // missSBTBuffer = UploadBuffer<void*>(recordSize, device);
+    // missSBTBuffer.upload({missId}, shaderIdSize);
+    //
+    // hitGroupSBTBuffer = UploadBuffer<void*>(recordSize, device);
+    // hitGroupSBTBuffer.upload({hitGroupId}, shaderIdSize);
+
+    // dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenSBTBuffer.getBuffer()->GetGPUVirtualAddress();
+    // dispatchDesc.RayGenerationShaderRecord.SizeInBytes = recordSize;
+    //
+    // dispatchDesc.MissShaderTable.StartAddress = missSBTBuffer.getBuffer()->GetGPUVirtualAddress();
+    // dispatchDesc.MissShaderTable.SizeInBytes = recordSize;
+    // dispatchDesc.MissShaderTable.StrideInBytes = recordSize;
+    //
+    // dispatchDesc.HitGroupTable.StartAddress = hitGroupSBTBuffer.getBuffer()->GetGPUVirtualAddress();
+    // dispatchDesc.HitGroupTable.SizeInBytes = recordSize;
+    // dispatchDesc.HitGroupTable.StrideInBytes = recordSize;
+    //
+    // dispatchDesc.Width = w;
+    // dispatchDesc.Height = h;
+    // dispatchDesc.Depth = 1;
 }

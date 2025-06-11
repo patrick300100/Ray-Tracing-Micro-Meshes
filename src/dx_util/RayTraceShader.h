@@ -41,6 +41,7 @@ public:
     ComPtr<ID3D12StateObject> pipelineStateObject;
     ComPtr<ID3D12RootSignature> globalRootSignature;
     ComPtr<ID3D12DescriptorHeap> descriptorHeap;
+    ComPtr<ID3D12Resource> shaderIDs;
 
     RayTraceShader() = default;
     RayTraceShader(
