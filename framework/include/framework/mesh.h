@@ -63,4 +63,7 @@ public:
 	[[nodiscard]] float animationDuration() const;
 	[[nodiscard]] std::vector<glm::uvec3> baseTriangleIndices() const;
 	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const; //Contains base vertices + micro vertices
+
+	[[nodiscard]] int numberOfVerticesOnEdge() const; //Computes the number of (micro) vertices on an edge
+	[[nodiscard]] int subdivisionLevel() const; //Computes the subdivision level of the triangles (same for each triangle)
 };

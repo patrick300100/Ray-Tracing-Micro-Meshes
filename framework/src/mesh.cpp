@@ -148,3 +148,27 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
 
     return {vs, is};
 }
+
+int Mesh::numberOfVerticesOnEdge() const {
+    Triangle triangle = triangles[0];
+
+    const auto v0 = vertices[triangle.baseVertexIndices.x];
+    const auto v1 = vertices[triangle.baseVertexIndices.y];
+    const auto v2 = vertices[triangle.baseVertexIndices.z];
+
+    int vertexCount = 0;
+    for(int i = triangle.uVertices.size() - 1; i >= 0; i--) {
+        vertexCount++;
+
+        const auto uv = triangle.uVertices[i];
+        auto bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
+
+        if(bc == glm::vec3(0,1,0)) return vertexCount;
+    }
+
+    return 2; //In case there are no micro vertices, we just have 2 vertices on an edge
+}
+
+int Mesh::subdivisionLevel() const {
+    return std::countr_zero(triangles[0].uFaces.size()) / 2;
+}
