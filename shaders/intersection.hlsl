@@ -53,6 +53,14 @@ struct EdgeWithT {
 
 struct Triangle2D {
     Vertex2D vertices[3]; //3 vertices of triangle
+
+    float signedArea() {
+        float2 p0 = vertices[0].position;
+        float2 p1 = vertices[1].position;
+        float2 p2 = vertices[2].position;
+
+    	return (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+	}
 };
 
 //A struct that contains 2 triangles: the triangle with displaced vertices and undisplaced vertices (in 2D)
@@ -185,21 +193,31 @@ IntersectedEdges sort(inout EdgeWithT edges[9]) {
 }
 
 //We are given 2 edges that are connected with each other. We can create a triangle from that
-Triangle2D createTriangleFromEdges(Edge a, Edge b) {
+Triangle2D createTriangleFromEdges(Edge a, Edge b, float baseArea) {
+    Vertex2D v0New, v1New, v2New;
+
     //TODO maybe switch to more robust float comparison
     if(all(a.start.position == b.start.position)) {
-        Triangle2D t = {a.start, a.end, b.end};
-        return t;
+        v0New = a.end; v1New = a.start; v2New = b.end;
     } else if(all(a.start.position == b.end.position)) {
-        Triangle2D t = {a.start, a.end, b.start};
-        return t;
+        v0New = a.start; v1New = a.end; v2New = b.start;
     } else if(all(a.end.position == b.start.position)) {
-        Triangle2D t = {a.start, a.end, b.end};
-        return t;
+        v0New = a.start; v1New = a.end; v2New = b.end;
     } else { //if(a.end == b.end)
-        Triangle2D t = {a.start, a.end, b.start};
-        return t;
+        v0New = a.end; v1New = a.start; v2New = b.start;
     }
+
+    Triangle2D tempTriangle = {v0New, v1New, v2New};
+    float newArea = tempTriangle.signedArea();
+
+    if(baseArea * newArea < 0.0) {
+        Vertex2D temp = v1New;
+        v1New = v2New;
+        v2New = temp;
+    }
+
+    Triangle2D t = {v0New, v1New, v2New};
+    return t;
 }
 
 //Gets the first edge that a ray hits
@@ -218,6 +236,15 @@ EdgeWithT getFirstIntersectedEdge(Ray2D ray, Edge edgesD[9], Edge edgesU[9]) {
     rayIntersectsEdge(ray, edgesD[6], t6);
     rayIntersectsEdge(ray, edgesD[7], t7);
     rayIntersectsEdge(ray, edgesD[8], t8);
+
+    bool noHit = (t0 == -1.0) && (t1 == -1.0) && (t2 == -1.0) &&
+                   (t3 == -1.0) && (t4 == -1.0) && (t5 == -1.0) &&
+                   (t6 == -1.0) && (t7 == -1.0) && (t8 == -1.0);
+
+    if(noHit) {
+        EdgeWithT ewt = {edgesD[0], t0, edgesU[0]};
+        return ewt;
+    }
 
     EdgeWithT allEdgesWithT[9] = {
         {edgesD[0], t0, edgesU[0]},
@@ -240,8 +267,9 @@ EdgeWithT getFirstIntersectedEdge(Ray2D ray, Edge edgesD[9], Edge edgesU[9]) {
 // @param tDis: the displaced triangle
 // @param tUndis: the undisplaced triangle
 // @param ray: the ray in 2D
+// @param sa: signed area of the base triangle. We use this to preserve vertex order (counter clockwise)
 // @return an array of triangles that the ray crossed in order
-IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis, Ray2D ray, int dOffset, Plane p) {
+IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis, Ray2D ray, int dOffset, Plane p, float sa) {
 	Vertex2D v0Displaced = tDis.vertices[0];
     Vertex2D v1Displaced = tDis.vertices[1];
     Vertex2D v2Displaced = tDis.vertices[2];
@@ -333,15 +361,15 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         return its;
     } else if(ies.count == 4) {
         Triangle2D tsDisplaced[3] = {
-            createTriangleFromEdges(ies.edges[0].e, ies.edges[1].e),
-            createTriangleFromEdges(ies.edges[1].e, ies.edges[2].e),
-            createTriangleFromEdges(ies.edges[2].e, ies.edges[3].e)
+            createTriangleFromEdges(ies.edges[0].e, ies.edges[1].e, sa),
+            createTriangleFromEdges(ies.edges[1].e, ies.edges[2].e, sa),
+            createTriangleFromEdges(ies.edges[2].e, ies.edges[3].e, sa)
         };
 
         Triangle2D tsUndisplaced[3] = {
-            createTriangleFromEdges(ies.edges[0].eU, ies.edges[1].eU),
-            createTriangleFromEdges(ies.edges[1].eU, ies.edges[2].eU),
-            createTriangleFromEdges(ies.edges[2].eU, ies.edges[3].eU)
+            createTriangleFromEdges(ies.edges[0].eU, ies.edges[1].eU, sa),
+            createTriangleFromEdges(ies.edges[1].eU, ies.edges[2].eU, sa),
+            createTriangleFromEdges(ies.edges[2].eU, ies.edges[3].eU, sa)
         };
 
         TriangleDAUD tDaud[3] = {
@@ -359,6 +387,16 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         Ray2D backwardRay = {ray.origin, -ray.direction};
         EdgeWithT closestBackward = getFirstIntersectedEdge(backwardRay, allEdgesD, allEdgesU); //The first edge that the backward ray hits
 
+        //Backward ray did not hit anything (can happen when ray hits only 2 (base) edges). So we only need to process the current triangle
+        if(closestBackward.t == -1) {
+            TriangleDAUD tDaud[3];
+            tDaud[0].tDisplaced = createTriangleFromEdges(ies.edges[0].e, ies.edges[1].e, sa);
+			tDaud[0].tUndisplaced = createTriangleFromEdges(ies.edges[0].eU, ies.edges[1].eU, sa);
+
+            IntersectedTriangles its = {tDaud, 1};
+            return its;
+        }
+
         Triangle2D tsD[3];
         Triangle2D tsU[3];
         int tCount = 0;
@@ -369,8 +407,8 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
             if(i == 0) startEdge = closestBackward;
             else startEdge = ies.edges[i - 1];
 
-            tsD[tCount] = createTriangleFromEdges(startEdge.e, ies.edges[i].e);
-            tsU[tCount] = createTriangleFromEdges(startEdge.eU, ies.edges[i].eU);
+            tsD[tCount] = createTriangleFromEdges(startEdge.e, ies.edges[i].e, sa);
+            tsU[tCount] = createTriangleFromEdges(startEdge.eU, ies.edges[i].eU, sa);
             tCount++;
         }
 
@@ -437,6 +475,8 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
     StackElement se = { rootTri, 0 };
     stack[stackTop++] = se;
 
+    float sa = rootTri.tUndisplaced.signedArea();
+
     while(stackTop > 0) {
         StackElement current = stack[--stackTop];
 
@@ -453,7 +493,7 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
 
             if(rayTraceTriangle(vs3D[0].position, vs3D[1].position, vs3D[2].position)) return; //Ray hits triangle, so we can stop searching
         } else {
-            IntersectedTriangles its = getIntersectedTriangles(current.tri.tDisplaced, current.tri.tUndisplaced, ray, dOffset, p);
+            IntersectedTriangles its = getIntersectedTriangles(current.tri.tDisplaced, current.tri.tUndisplaced, ray, dOffset, p, sa);
 
             //Push intersected triangles in reverse order to main correct processing order (triangles should be processed in the order the ray hits them)
             //TODO switching data structure to a queue would make more sense...
