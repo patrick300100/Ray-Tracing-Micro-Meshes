@@ -316,9 +316,13 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
     float3 uv1Displacement = getDisplacement(uv1.coordinates, dOffset);
     float3 uv2Displacement = getDisplacement(uv2.coordinates, dOffset);
 
-    Vertex2D uv0Displaced = {uv0.position, dot(uv0Displacement, p.N), uv0.coordinates};
-    Vertex2D uv1Displaced = {uv1.position, dot(uv1Displacement, p.N), uv1.coordinates};
-    Vertex2D uv2Displaced = {uv2.position, dot(uv2Displacement, p.N), uv2.coordinates};
+    float2 uv0Displacement2D = projectDirTo2D(uv0Displacement, p.T, p.B);
+    float2 uv1Displacement2D = projectDirTo2D(uv1Displacement, p.T, p.B);
+    float2 uv2Displacement2D = projectDirTo2D(uv2Displacement, p.T, p.B);
+
+    Vertex2D uv0Displaced = {uv0.position + uv0Displacement2D, dot(uv0Displacement, p.N), uv0.coordinates};
+    Vertex2D uv1Displaced = {uv1.position + uv1Displacement2D, dot(uv1Displacement, p.N), uv1.coordinates};
+    Vertex2D uv2Displaced = {uv2.position + uv2Displacement2D, dot(uv2Displacement, p.N), uv2.coordinates};
 
     //Perform edge-crossing tests with all 9 edges
     float t0 = -1;
