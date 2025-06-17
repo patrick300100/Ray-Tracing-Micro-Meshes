@@ -86,7 +86,6 @@ public:
             std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(vertices), [](const Vertex& v) { return RayTraceVertex{v.position}; });
 
             vertexBuffer = DefaultBuffer<RayTraceVertex>(gpuState.get_device(), vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            vertexBuffer.getBuffer()->SetName(L"Vertex buffer (ray tracing)");
             vertexBuffer.upload(vertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<RayTraceVertex>(vertexBuffer.getBuffer());
 
@@ -95,19 +94,16 @@ public:
             AABBs.reserve(mesh[0].cpuMesh.triangles.size());
             std::vector<glm::vec3> displacements;
             for(const auto& [triangle, AABB] : std::views::zip(mesh[0].cpuMesh.triangles, mesh[0].getAABBs())) {
-                //TODO don't forget to not hardcode nRows to 9. Just for testing
-                AABBs.emplace_back(glm::vec3{AABB.MinX, AABB.MinY, AABB.MinZ}, glm::vec3{AABB.MaxX, AABB.MaxY, AABB.MaxZ}, triangle.baseVertexIndices, 9, displacements.size());
+                AABBs.emplace_back(glm::vec3{AABB.MinX, AABB.MinY, AABB.MinZ}, glm::vec3{AABB.MaxX, AABB.MaxY, AABB.MaxZ}, triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), displacements.size());
 
                 std::ranges::transform(triangle.uVertices, std::back_inserter(displacements), [](const uVertex& uv) { return uv.displacement; });
             }
 
             AABBBuffer = DefaultBuffer<AABB>(gpuState.get_device(), AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            AABBBuffer.getBuffer()->SetName(L"AABB buffer");
             AABBBuffer.upload(AABBs, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<AABB>(AABBBuffer.getBuffer());
 
             disBuffer = DefaultBuffer<glm::vec3>(gpuState.get_device(), displacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            disBuffer.getBuffer()->SetName(L"Displacement buffer (ray tracing)");
             disBuffer.upload(displacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<glm::vec3>(disBuffer.getBuffer());
 
@@ -144,7 +140,7 @@ public:
 
             meshDataBuffer = UploadBuffer<int>(gpuState.get_device(), 1, true);
             meshDataBuffer.getBuffer()->SetName(L"Mesh data buffer");
-            meshDataBuffer.upload({3}); //TODO don't hardcode this to 3.
+            meshDataBuffer.upload({mesh[0].cpuMesh.subdivisionLevel()});
             rtShader.createCBV(meshDataBuffer.getBuffer());
 
             rtShader.createPipeline();
