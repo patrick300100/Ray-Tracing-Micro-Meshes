@@ -42,6 +42,19 @@ struct Edge {
 
         return v;
     }
+
+    bool isLeft(float2 p) {
+        return !isRight(p);
+    }
+
+    //Returns true if point p lies on the right side of this edge (or is exactly on it)
+    bool isRight(float2 p) {
+        float2 SE = end.position - start.position;
+        float2 SP = p - start.position;
+        float cross = SE.x * SP.y - SE.y * SP.x;
+
+        return cross <= 0;
+    }
 };
 
 //Utility struct that stores an edge along with the intersection point
@@ -229,45 +242,26 @@ Triangle2D createTriangleFromEdges(Edge a, Edge b, float baseArea) {
 // @param verticesU: the 6 (undisplaced) vertices in the same order as verticesD
 // @param triD: the (displaced) triangle that point p lies in (only defined if p actually lies inside the triangle v0-v1-v2)
 // @param triU: the same, but undisplaced triangle that point p lies in (only defined if p actually lies inside the triangle v0-v1-v2)
+// @param es: the (displaced) edges [uv0-uv1, uv1-uv2, uv2-uv0], in that order
 // @return true if p lies inside the triangle, false if not.
-bool findSubTriangle(float2 p, Vertex2D verticesD[6], Vertex2D verticesU[6], out Triangle2D triD, out Triangle2D triU, float baseArea) {
-    float2 v0v1 = verticesD[1].position - verticesD[0].position;
-    float2 v0v2 = verticesD[2].position - verticesD[0].position;
-    float2 v0p = p - verticesD[0].position;
-
-    float d00 = dot(v0v1, v0v1);
-    float d01 = dot(v0v1, v0v2);
-    float d11 = dot(v0v2, v0v2);
-    float d20 = dot(v0p,  v0v1);
-    float d21 = dot(v0p,  v0v2);
-
-    float denom = d00 * d11 - d01 * d01;
-    if (denom == 0.0) return false; // Degenerate triangle
-
-    float v = (d11 * d20 - d01 * d21) / denom;
-    float w = (d00 * d21 - d01 * d20) / denom;
-    float u = 1.0 - v - w;
-
-    // Point is inside the triangle if all barycentrics are in [0, 1]
-    if (u < 0.0 || v < 0.0 || w < 0.0) return false;
+bool findSubTriangle(float2 p, Vertex2D verticesD[6], Vertex2D verticesU[6], out Triangle2D triD, out Triangle2D triU, float baseArea, Edge es[9]) {
+    //if p is outside the triangle
+	if((es[0].isRight(p) || es[8].isLeft(p) || es[5].isRight(p)) && (es[1].isRight(p) || es[2].isRight(p) || es[6].isLeft(p)) && (es[3].isRight(p) || es[4].isRight(p) || es[7].isLeft(p)) && (es[6].isRight(p) || es[7].isRight(p) || es[8].isRight(p))) return false;
 
     // Determine which of the 4 sub-triangles contains the point
-    if(u >= 0.5) {
-        triD.vertices[0] = verticesD[0]; triU.vertices[0] = verticesU[0];
-        triD.vertices[1] = verticesD[3]; triU.vertices[1] = verticesU[3];
-        triD.vertices[2] = verticesD[5]; triU.vertices[2] = verticesU[5];
-    }
-    else if(v >= 0.5) {
+    if(es[6].isRight(p)) {
         triD.vertices[0] = verticesD[1]; triU.vertices[0] = verticesU[1];
         triD.vertices[1] = verticesD[4]; triU.vertices[1] = verticesU[4];
         triD.vertices[2] = verticesD[3]; triU.vertices[2] = verticesU[3];
-    }
-    else if(w >= 0.5) {
+    } else if(es[7].isRight(p)) {
         triD.vertices[0] = verticesD[2]; triU.vertices[0] = verticesU[2];
         triD.vertices[1] = verticesD[5]; triU.vertices[1] = verticesU[5];
         triD.vertices[2] = verticesD[4]; triU.vertices[2] = verticesU[4];
-    }
-    else {
+    } else if(es[8].isRight(p)) {
+        triD.vertices[0] = verticesD[0]; triU.vertices[0] = verticesU[0];
+        triD.vertices[1] = verticesD[3]; triU.vertices[1] = verticesU[3];
+        triD.vertices[2] = verticesD[5]; triU.vertices[2] = verticesU[5];
+    } else {
         triD.vertices[0] = verticesD[3]; triU.vertices[0] = verticesU[3];
         triD.vertices[1] = verticesD[4]; triU.vertices[1] = verticesU[4];
         triD.vertices[2] = verticesD[5]; triU.vertices[2] = verticesU[5];
@@ -389,28 +383,9 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         TriangleDAUD ts[3];
         IntersectedTriangles its = {ts, 0};
         return its;
-    } else if(ies.count == 4) {
-        Triangle2D tsDisplaced[3] = {
-            createTriangleFromEdges(ies.edges[0].e, ies.edges[1].e, sa),
-            createTriangleFromEdges(ies.edges[1].e, ies.edges[2].e, sa),
-            createTriangleFromEdges(ies.edges[2].e, ies.edges[3].e, sa)
-        };
-
-        Triangle2D tsUndisplaced[3] = {
-            createTriangleFromEdges(ies.edges[0].eU, ies.edges[1].eU, sa),
-            createTriangleFromEdges(ies.edges[1].eU, ies.edges[2].eU, sa),
-            createTriangleFromEdges(ies.edges[2].eU, ies.edges[3].eU, sa)
-        };
-
-        TriangleDAUD tDaud[3] = {
-            {tsDisplaced[0], tsUndisplaced[0]},
-            {tsDisplaced[1], tsUndisplaced[1]},
-            {tsDisplaced[2], tsUndisplaced[2]}
-        };
-
-        IntersectedTriangles its = {tDaud, 3};
-        return its;
     } else {
+    	TriangleDAUD ts[3];
+
         Vertex2D allVertsD[6] = {
             v0Displaced, v1Displaced, v2Displaced,
             uv0Displaced, uv1Displaced, uv2Displaced,
@@ -419,31 +394,27 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
             v0Undisplaced, v1Undisplaced, v2Undisplaced,
             uv0, uv1, uv2
         };
-        Triangle2D subTriD;
-        Triangle2D subTriU;
-        bool rayOriginInside = findSubTriangle(ray.origin, allVertsD, allVertsU, subTriD, subTriU, sa);
+        Edge allEdges[9] = {e0Displaced, e1Displaced, e2Displaced, e3Displaced, e4Displaced, e5Displaced, e6Displaced, e7Displaced, e8Displaced};
 
-        if(rayOriginInside) {
-            IntersectedTriangles its;
-            its.triangles[0].tDisplaced = subTriD;
-            its.triangles[0].tUndisplaced = subTriU;
-            its.count = 1;
+        float2 startPoint = ray.origin;
+        int counter = 0;
+        for(int i = 0; i < ies.count; i++) {
+            float2 hitPointEdge = ray.origin + ies.edges[i].t * ray.direction;
+            float2 middle = 0.5f * (startPoint + hitPointEdge);
+            Triangle2D subTriD;
+        	Triangle2D subTriU;
 
-            for(int i = 1; i < ies.count; i++) {
-                its.triangles[i].tDisplaced = createTriangleFromEdges(ies.edges[i-1].e, ies.edges[i].e, sa);
-                its.triangles[i].tUndisplaced = createTriangleFromEdges(ies.edges[i-1].eU, ies.edges[i].eU, sa);
-                its.count++;
+            if(findSubTriangle(middle, allVertsD, allVertsU, subTriD, subTriU, sa, allEdges)) {
+                ts[counter].tDisplaced = subTriD;
+                ts[counter].tUndisplaced = subTriU;
+                counter++;
             }
 
-            return its;
-        } else {
-            TriangleDAUD tDaud[3];
-            tDaud[0].tDisplaced = createTriangleFromEdges(ies.edges[0].e, ies.edges[1].e, sa);
-			tDaud[0].tUndisplaced = createTriangleFromEdges(ies.edges[0].eU, ies.edges[1].eU, sa);
-
-            IntersectedTriangles its = {tDaud, 1};
-            return its;
+            startPoint = hitPointEdge;
         }
+
+        IntersectedTriangles its = {ts, counter};
+        return its;
     }
 }
 
