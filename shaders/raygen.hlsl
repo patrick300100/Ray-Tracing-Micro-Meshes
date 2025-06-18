@@ -38,7 +38,7 @@ void main() {
     Payload payload;
     payload.color = float3(0, 0, 0);
 
-    TraceRay(scene, RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, 0xFF, 0, 1, 0, ray, payload);
+    TraceRay(scene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
 
     outputTexture[DispatchRaysIndex().xy] = float4(payload.color, 1.0);
 }
