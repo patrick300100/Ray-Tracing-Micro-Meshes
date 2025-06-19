@@ -419,6 +419,8 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
 }
 
 bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
+    const float epsilon = 1e-6f; //Needed for small floating-point errors
+
     float3 origin = WorldRayOrigin();
     float3 dir = WorldRayDirection();
 
@@ -432,11 +434,11 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
     float invDet = 1.0 / det;
     float3 tvec = origin - v0;
     float u = dot(tvec, pvec) * invDet;
-    if(u < 0 || u > 1) return false;
+    if(u < -epsilon || u > 1.0f + epsilon) return false;
 
     float3 qvec = cross(tvec, edge1);
     float v = dot(dir, qvec) * invDet;
-    if(v < 0 || u + v > 1) return false;
+    if(v < -epsilon || u + v > 1.0f + epsilon) return false;
 
     float t = dot(edge2, qvec) * invDet;
 
