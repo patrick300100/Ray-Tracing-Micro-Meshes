@@ -113,6 +113,7 @@ cbuffer meshData : register(b1) {
 StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<AABB> AABBs : register(t2);
 StructuredBuffer<float3> displacements : register(t3);
+StructuredBuffer<float3> positions2D : register(t4);
 
 //Projects a position onto the plane defined by T and B
 // @param p: the position to project onto the plane
@@ -164,6 +165,17 @@ float3 getDisplacement(float2 coords, int dOffset) {
     int index = sum + coords.y;
 
     return displacements[dOffset + index];
+}
+
+//Gets the position of a (micro) vertex on the plane, as well as the height needed to displace it.
+// @param triangular grid coordinates of the vertex
+// @param the offset into the buffer
+// @return a float3, where xy are the plane coordinates, and z is the height needed to displace
+float3 getPlanePosition(float2 coords, int dOffset) {
+    int sum = (coords.x * (coords.x + 1)) / 2; //Sum from 1 until coords.x (closed formula of summation)
+    int index = sum + coords.y;
+
+    return positions2D[dOffset + index];
 }
 
 //TODO maybe not necessary to return bool? Just return t value
@@ -246,6 +258,7 @@ Triangle2D createTriangleFromEdges(Edge a, Edge b, float baseArea) {
 // @return true if p lies inside the triangle, false if not.
 bool findSubTriangle(float2 p, Vertex2D verticesD[6], Vertex2D verticesU[6], out Triangle2D triD, out Triangle2D triU, float baseArea, Edge es[9]) {
     //if p is outside the triangle
+    //TODO can be done with only 6 edge comparisons I think
 	if((es[0].isRight(p) || es[8].isLeft(p) || es[5].isRight(p)) && (es[1].isRight(p) || es[2].isRight(p) || es[6].isLeft(p)) && (es[3].isRight(p) || es[4].isRight(p) || es[7].isLeft(p)) && (es[6].isRight(p) || es[7].isRight(p) || es[8].isRight(p))) return false;
 
     // Determine which of the 4 sub-triangles contains the point
@@ -271,6 +284,73 @@ bool findSubTriangle(float2 p, Vertex2D verticesD[6], Vertex2D verticesU[6], out
     triD.fixWindingOrder(baseArea);
     triU.fixWindingOrder(baseArea);
     return true;
+}
+
+//Gives the distance from a point to an edge
+// @param p: the point
+// @param e: the edge
+// @return the (shortest) distance from p to e
+float distPointToEdge(float2 p, Edge e) {
+    float2 a = e.start.position;
+    float2 b = e.end.position;
+
+    float2 ab = b - a;
+    float2 ap = p - a;
+
+    float t = saturate(dot(ap, ab) / dot(ab, ab));
+    float2 closest = a + t * ab;
+    return length(p - closest);
+}
+
+//Given an edge, returns the (displaced) position of the micro vertex that is most diverged.
+//So if you have an edge, it might contain micro vertices of the next subdivision level. These micro vertices may also be displaced away from the edge.
+//We return the micro verte that is the farthest away from the edge (if there is such micro vertex)
+// @param e: the edge
+// @param dOffset: the offset into the planePositions2D buffer
+// @return the most diverged micro vertex from the given edge
+Vertex2D getMostOuterVertex(Edge e, int dOffset, out float dist) {
+    int2 startCoord = min(e.start.coordinates, e.end.coordinates);
+    int2 endCoord = max(e.start.coordinates, e.end.coordinates);
+
+    float2 maxOuterPos;
+    float maxDistance = 0.0f;
+    if(startCoord.x == endCoord.x) {
+        for(int i = startCoord.y + 1; i < endCoord.y; i++) {
+            float2 planePos = getPlanePosition(float2(startCoord.x, i), dOffset).xy;
+            float dist = distPointToEdge(planePos, e);
+
+            if(e.isRight(planePos) && dist > maxDistance) {
+                maxDistance = dist;
+                maxOuterPos = planePos;
+            }
+        }
+    } else if(startCoord.y == endCoord.y) {
+        for(int i = startCoord.x + 1; i < endCoord.x; i++) {
+            float2 planePos = getPlanePosition(float2(i, startCoord.y), dOffset).xy;
+            float dist = distPointToEdge(planePos, e);
+
+            if(e.isRight(planePos) && dist > maxDistance) {
+                maxDistance = dist;
+                maxOuterPos = planePos;
+            }
+        }
+    } else {
+        int increment = endCoord.x - startCoord.x;
+
+        for(int i = 1; i < increment; i++) {
+            float2 planePos = getPlanePosition(float2(startCoord.x + i, startCoord.y + 1), dOffset).xy;
+            float dist = distPointToEdge(planePos, e);
+
+            if(e.isRight(planePos) && dist > maxDistance) {
+                maxDistance = dist;
+                maxOuterPos = planePos;
+            }
+        }
+    }
+
+    dist = maxDistance;
+    Vertex2D v = {maxOuterPos, -1, float2(-1, -1)}; //We're only interested in the position, so fill vertex with dummy values
+    return v;
 }
 
 //Given a triangle, we subdivide it one level and return the triangles that the ray crossed
@@ -380,6 +460,47 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
     IntersectedEdges ies = sort(allEdgesWithT);
 
     if(ies.count == 0) {
+        /*
+         * In some edge cases it's possible that it misses the displaced triangle in this subdivision level, but it actually hits the displaced triangle in one of the next subdivision levels.
+         * So we check whether it possibly hits it in one of the next subdivision levels (without explicitly subdividing into all subsequent levels!).
+         */
+        Edge outerEdges[6] = {e5Displaced, e0Displaced, e1Displaced, e2Displaced, e3Displaced, e4Displaced};
+        [unroll] for(int i = 0; i < 6; i++) {
+            Edge ou = outerEdges[i];
+
+            float dist;
+            Vertex2D ov = getMostOuterVertex(ou, dOffset, dist);
+
+            Edge divertedEdge1 = {ou.start, ov};
+            Edge divertedEdge2 = {ov, ou.end};
+            float divertedT = -1;
+
+            if(dist > 0.0 && (rayIntersectsEdge(ray, divertedEdge1, divertedT) || rayIntersectsEdge(ray, divertedEdge2, divertedT))) {
+                TriangleDAUD ts[3];
+                Triangle2D triD, triU;
+
+                if(i <= 1) {
+                    triD.vertices[0] = v0Displaced; triD.vertices[1] = uv0Displaced; triD.vertices[2] = uv2Displaced;
+                    triU.vertices[0] = v0Undisplaced; triU.vertices[1] = uv0; triU.vertices[2] = uv2;
+                } else if(i >= 4) {
+                    triD.vertices[0] = uv1Displaced; triD.vertices[1] = v2Displaced; triD.vertices[2] = uv2Displaced;
+                    triU.vertices[0] = uv1; triU.vertices[1] = v2Undisplaced; triU.vertices[2] = uv2;
+                } else {
+                    triD.vertices[0] = uv0Displaced; triD.vertices[1] = v1Displaced; triD.vertices[2] = uv1Displaced;
+                    triU.vertices[0] = uv0; triU.vertices[1] = v1Undisplaced; triU.vertices[2] = uv1;
+                }
+
+                ts[0].tDisplaced = triD;
+                ts[0].tUndisplaced = triU;
+
+                IntersectedTriangles its = {ts, 1};
+                return its;
+            }
+        }
+
+        /*
+         * It really misses it, so return no intersected triangles.
+         */
         TriangleDAUD ts[3];
         IntersectedTriangles its = {ts, 0};
         return its;

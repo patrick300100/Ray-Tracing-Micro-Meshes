@@ -74,7 +74,7 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 4}, {UAV, 1}, {CBV, 2}},
+               {{SRV, 5}, {UAV, 1}, {CBV, 2}},
                gpuState.get_device()
            );
 
@@ -89,14 +89,30 @@ public:
             vertexBuffer.upload(vertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<RayTraceVertex>(vertexBuffer.getBuffer());
 
+            const auto cpuMesh = mesh[0].cpuMesh;
 
             std::vector<AABB> AABBs;
             AABBs.reserve(mesh[0].cpuMesh.triangles.size());
             std::vector<glm::vec3> displacements;
+            std::vector<glm::vec3> planePositions;
             for(const auto& [triangle, AABB] : std::views::zip(mesh[0].cpuMesh.triangles, mesh[0].getAABBs())) {
                 AABBs.emplace_back(glm::vec3{AABB.MinX, AABB.MinY, AABB.MinZ}, glm::vec3{AABB.MaxX, AABB.MaxY, AABB.MaxZ}, triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), displacements.size());
 
                 std::ranges::transform(triangle.uVertices, std::back_inserter(displacements), [](const uVertex& uv) { return uv.displacement; });
+
+
+                const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
+                const auto v1 = cpuMesh.vertices[triangle.baseVertexIndices.y];
+                const auto v2 = cpuMesh.vertices[triangle.baseVertexIndices.z];
+
+                glm::vec3 e1 = v1.position - v0.position;
+                glm::vec3 e2 = v2.position - v0.position;
+                glm::vec3 N = glm::normalize(cross(e1, e2)); // plane normal
+
+                glm::vec3 T = normalize(e1);
+                glm::vec3 B = glm::normalize(cross(N, T));
+
+                std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return projectTo2D(uv.position + uv.displacement, T, B, N, v0.position); });
             }
 
             AABBBuffer = DefaultBuffer<AABB>(gpuState.get_device(), AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
@@ -106,6 +122,10 @@ public:
             disBuffer = DefaultBuffer<glm::vec3>(gpuState.get_device(), displacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             disBuffer.upload(displacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<glm::vec3>(disBuffer.getBuffer());
+
+            planePositionsBuffer = DefaultBuffer<glm::vec3>(device, planePositions.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            planePositionsBuffer.upload(planePositions, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<glm::vec3>(planePositionsBuffer.getBuffer());
 
 
             //Creating output texture
@@ -127,19 +147,16 @@ public:
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 nullptr,
                 IID_PPV_ARGS(&raytracingOutput));
-            raytracingOutput->SetName(L"Ray Trace Output Texture");
 
             rtShader.createOutputUAV(raytracingOutput);
 
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
 
             invViewProjBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 1, true);
-            invViewProjBuffer.getBuffer()->SetName(L"Inverse view-projection matrix");
             invViewProjBuffer.upload({invViewProj});
             rtShader.createCBV(invViewProjBuffer.getBuffer());
 
             meshDataBuffer = UploadBuffer<int>(gpuState.get_device(), 1, true);
-            meshDataBuffer.getBuffer()->SetName(L"Mesh data buffer");
             meshDataBuffer.upload({mesh[0].cpuMesh.subdivisionLevel()});
             rtShader.createCBV(meshDataBuffer.getBuffer());
 
@@ -282,6 +299,7 @@ private:
     UploadBuffer<int> meshDataBuffer;
     DefaultBuffer<AABB> AABBBuffer;
     DefaultBuffer<glm::vec3> disBuffer;
+    DefaultBuffer<glm::vec3> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
 
     void menu() {
