@@ -122,7 +122,7 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
                 Vertex v {
                     .position = uv.position,
                     .normal = bc.x * bv0.normal + bc.y * bv1.normal + bc.z * bv2.normal, //interpolated normal
-                    .displacement = uv.displacement,
+                    .direction = uv.displacement,
                     .baseBoneIndices0 = bv0.boneIndices,
                     .baseBoneIndices1 = bv1.boneIndices,
                     .baseBoneIndices2 = bv2.boneIndices,

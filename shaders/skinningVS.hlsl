@@ -23,7 +23,7 @@ struct VertexInput {
     float3 normal              : NORMAL;
     int4   boneIndices         : BONEINDICES;
     float4 boneWeights         : BONEWEIGHTS;
-    float3 displacement        : DISPLACEMENT;
+    float3 displacement        : DIRECTION;
 
     int4   baseBoneIndices0    : BASEBONEINDICES0;
     int4   baseBoneIndices1    : BASEBONEINDICES1;

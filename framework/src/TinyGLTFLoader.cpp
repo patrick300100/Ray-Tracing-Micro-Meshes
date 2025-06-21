@@ -135,7 +135,7 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
         myMesh.parent = std::move(parent);
 
         for(auto& v : myMesh.vertices) {
-            v.displacement = getVertexDisplacement(v.position);
+            v.direction = getVertexDisplacementDir(v.position);
         }
 
         out.push_back(myMesh);
@@ -208,7 +208,7 @@ void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
     }
 }
 
-glm::vec3 TinyGLTFLoader::getVertexDisplacement(const glm::vec3 position) const {
+glm::vec3 TinyGLTFLoader::getVertexDisplacementDir(const glm::vec3 position) const {
     for(const auto& f : umesh.faces) {
         for(int i = 0; i < 3; i++) {
             auto pos = f.base_V.row(i);

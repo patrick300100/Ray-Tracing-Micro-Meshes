@@ -27,7 +27,7 @@ struct Vertex {
 	glm::vec3 normal;
 	glm::ivec4 boneIndices = glm::ivec4(0);
 	glm::vec4 boneWeights = glm::vec4(0.0f);
-	glm::vec3 displacement;
+	glm::vec3 direction;
 
 	//Only applicable for micro vertices! These refer to the 3 bone indices and weights of the base vertices under which this micro vertex falls.
 	glm::ivec4 baseBoneIndices0{0};

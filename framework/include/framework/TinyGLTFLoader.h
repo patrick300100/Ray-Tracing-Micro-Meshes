@@ -38,9 +38,9 @@ class TinyGLTFLoader {
     void boneTransformations(Mesh& mesh) const;
 
     /**
-    * Fetch the vertex displacement given its position.
+    * Fetch the vertex displacement direction given its position.
     */
-    [[nodiscard]] glm::vec3 getVertexDisplacement(glm::vec3 position) const;
+    [[nodiscard]] glm::vec3 getVertexDisplacementDir(glm::vec3 position) const;
 
 public:
     TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo);

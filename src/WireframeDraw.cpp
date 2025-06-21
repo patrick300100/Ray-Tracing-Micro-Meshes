@@ -88,7 +88,7 @@ WireframeDraw::WireframeDraw(const Mesh& m) {
 				for(const auto& uv : {uvA, uvB}) {
 					const auto v = Vertex {
 						.position = uv.position,
-						.displacement = uv.displacement,
+						.direction = uv.displacement,
 						.baseBoneIndices0 = bv0.boneIndices,
 						.baseBoneIndices1 = bv1.boneIndices,
 						.baseBoneIndices2 = bv2.boneIndices,
@@ -142,7 +142,7 @@ WireframeDraw::WireframeDraw(const Mesh& m) {
 		glVertexArrayAttribFormat(baseVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
 		glVertexArrayAttribIFormat(baseVAO, 1, 4, GL_INT, offsetof(Vertex, boneIndices));
 		glVertexArrayAttribFormat(baseVAO, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
-		glVertexArrayAttribFormat(baseVAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
+		glVertexArrayAttribFormat(baseVAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, direction));
 		glVertexArrayAttribIFormat(baseVAO, 4, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
 		glVertexArrayAttribIFormat(baseVAO, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
 		glVertexArrayAttribIFormat(baseVAO, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
@@ -192,7 +192,7 @@ WireframeDraw::WireframeDraw(const Mesh& m) {
 		glVertexArrayAttribFormat(microVAO, 0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, position));
 		glVertexArrayAttribIFormat(microVAO, 1, 4, GL_INT, offsetof(Vertex, boneIndices));
 		glVertexArrayAttribFormat(microVAO, 2, 4, GL_FLOAT, GL_FALSE, offsetof(Vertex, boneWeights));
-		glVertexArrayAttribFormat(microVAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, displacement));
+		glVertexArrayAttribFormat(microVAO, 3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, direction));
 		glVertexArrayAttribIFormat(microVAO, 4, 4, GL_INT, offsetof(Vertex, baseBoneIndices0));
 		glVertexArrayAttribIFormat(microVAO, 5, 4, GL_INT, offsetof(Vertex, baseBoneIndices1));
 		glVertexArrayAttribIFormat(microVAO, 6, 4, GL_INT, offsetof(Vertex, baseBoneIndices2));
