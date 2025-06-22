@@ -7,23 +7,25 @@ DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
 DISABLE_WARNINGS_POP()
 
-TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFReadInfo& umeshReadInfo) {
+TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, GLTFReadInfo& umeshReadInfo) {
     std::string err, warn;
     tinygltf::TinyGLTF loader;
 
-    if(animFilePath.extension().string() == ".gltf") {
-        if(!loader.LoadASCIIFromFile(&model, &err, &warn, animFilePath.string())) throw std::runtime_error("Failed to load GLTF: " + err);
-    } else {
-        if(!loader.LoadBinaryFromFile(&model, &err, &warn, animFilePath.string())) throw std::runtime_error("Failed to load GLB: " + err);
+    for(auto& [gltfFile, model] : std::vector{std::pair{animFilePath, &animModel}, std::pair{umeshFilePath, &umeshModel}}) {
+        if(gltfFile.extension().string() == ".gltf") {
+            if(!loader.LoadASCIIFromFile(model, &err, &warn, gltfFile.string())) throw std::runtime_error("Failed to load GLTF: " + err);
+        } else {
+            if(!loader.LoadBinaryFromFile(model, &err, &warn, gltfFile.string())) throw std::runtime_error("Failed to load GLB: " + err);
+        }
+
+        if(!warn.empty()) std::cerr << "GLTF Warning: " << warn << std::endl;
     }
 
-    if(!warn.empty()) std::cerr << "GLTF Warning: " << warn << std::endl;
+    parent.resize(animModel.skins[0].joints.size(), -1);
 
-    parent.resize(model.skins[0].joints.size(), -1);
-
-    auto joints = model.skins[0].joints;
+    auto joints = animModel.skins[0].joints;
     for(int i = 0; i < joints.size(); i++) {
-        for(const auto joint = joints[i]; const auto child : model.nodes[joint].children) {
+        for(const auto joint = joints[i]; const auto child : animModel.nodes[joint].children) {
             const auto it = std::ranges::find(joints, child);
             const auto childIndex = std::distance(joints.begin(), it);
 
@@ -35,113 +37,96 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& animFilePath, GLTFRe
 }
 
 std::vector<Mesh> TinyGLTFLoader::toMesh() {
-    std::vector<Mesh> out;
+    const auto animPrimitive = animModel.meshes[0].primitives[0];
+    const auto umeshPrimitive = umeshModel.meshes[0].primitives[0];
 
-    for(int i = 0; i < model.meshes.size(); i++) {
-        const auto& gltfMesh = model.meshes[i];
-        Mesh myMesh;
+    Mesh myMesh;
+    std::vector<Vertex> vertices;
 
-        for(const tinygltf::Primitive& primitive : gltfMesh.primitives) {
-            std::vector<Vertex> vertices;
-            std::vector<glm::uvec3> triangles;
+    // Extract vertex positions
+    {
+        const auto positions = getAttributeData<glm::vec3>(umeshModel, umeshPrimitive, "POSITION");
 
-            // Extract vertex positions
-            if(primitive.attributes.contains("POSITION")) {
-                const auto positions = getAttributeData<glm::vec3>(primitive, "POSITION");
-
-                vertices.resize(positions.size());
-                for(size_t j = 0; j < positions.size(); j++) {
-                    vertices[j].position = positions[j];
-                }
-            }
-
-            // Extract vertex normals
-            if(primitive.attributes.contains("NORMAL")) {
-                const auto normals = getAttributeData<glm::vec3>(primitive, "NORMAL");
-
-                for(size_t j = 0; j < normals.size(); j++) {
-                    vertices[j].normal = normals[j];
-                }
-            }
-
-            // Extract per-vertex bone indices
-            if(primitive.attributes.contains("JOINTS_0")) {
-                auto processJoints = [&]<typename T0>(T0 /*type*/) {
-                    const auto joints = getAttributeData<T0>(primitive, "JOINTS_0");
-
-                    for(int j = 0; j < joints.size(); j++) {
-                        vertices[j].boneIndices = glm::ivec4(joints[j]);
-                    }
-                };
-
-                switch(model.accessors[primitive.attributes.at("JOINTS_0")].componentType) {
-                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: processJoints(glm::u8vec4{}); break;
-                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: processJoints(glm::u16vec4{}); break;
-                    default: throw std::runtime_error("Component type cannot be processed for bone indices. Please add.");
-                }
-            }
-
-            // Extract per-vertex bone weights
-            if(primitive.attributes.contains("WEIGHTS_0")) {
-                const auto weights = getAttributeData<glm::vec4>(primitive, "WEIGHTS_0");
-
-                for(size_t j = 0; j < weights.size(); j++) {
-                    vertices[j].boneWeights = weights[j];
-                }
-            }
-
-            // Extract vertex indices per triangle
-            auto processIndices = [&]<typename T0>(T0 /*type*/) {
-                const auto indices = getBufferData<T0>(primitive.indices);
-                
-                for(int j = 0; j < indices.size(); j += 3) {
-                    triangles.emplace_back(indices[j], indices[j + 1], indices[j + 2]);
-                }
-            };
-
-            switch(model.accessors[primitive.indices].componentType) {
-                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: processIndices(uint16_t{}); break;
-                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT: processIndices(uint32_t{}); break;
-                default: throw std::runtime_error("Component type cannot be processed for vertex indices. Please add.");
-            }
-
-            myMesh.vertices = std::move(vertices);
-
-            for(const auto& [f, t] : std::views::zip(umesh.faces, triangles)) {
-                std::vector<uVertex> uvs; //micro vertices
-                for(int j = 0; j < f.V.rows(); j++) {
-                    const auto& pos = f.V.row(j);
-                    const auto& dis = f.VD.row(j);
-
-                    uvs.emplace_back(glm::vec3{pos(0), pos(1), pos(2)}, glm::vec3{dis(0), dis(1), dis(2)});
-                }
-
-                std::vector<glm::uvec3> ufs; //micro faces
-                for(int j = 0; j < f.F.rows(); j++) {
-                    const auto& indices = f.F.row(j);
-
-                    ufs.emplace_back(indices(0), indices(1), indices(2));
-                }
-
-                myMesh.triangles.emplace_back(t, uvs, ufs);
-            }
+        vertices.resize(positions.size());
+        for(size_t j = 0; j < positions.size(); j++) {
+            vertices[j].position = positions[j];
         }
-
-        auto node = *std::ranges::find(model.nodes, i, &tinygltf::Node::mesh); //Find node corresponding to this mesh
-        setupMeshesInScene(myMesh.vertices, node);
-
-        boneTransformations(myMesh);
-
-        myMesh.parent = std::move(parent);
-
-        for(auto& v : myMesh.vertices) {
-            v.direction = getVertexDisplacementDir(v.position);
-        }
-
-        out.push_back(myMesh);
     }
 
-    return out;
+    // Extract vertex normals
+    {
+        const auto normals = getAttributeData<glm::vec3>(umeshModel, umeshPrimitive, "NORMAL");
+
+        for(size_t j = 0; j < normals.size(); j++) {
+            vertices[j].normal = normals[j];
+        }
+    }
+
+    // Extract per-vertex bone indices
+    if(animPrimitive.attributes.contains("JOINTS_0")) {
+        auto processJoints = [&]<typename T0>(T0 /*type*/) {
+            const auto joints = getAttributeData<T0>(animModel, animPrimitive, "JOINTS_0");
+
+            for(int j = 0; j < joints.size(); j++) {
+                vertices[j].boneIndices = glm::ivec4(joints[j]);
+            }
+        };
+
+        switch(animModel.accessors[animPrimitive.attributes.at("JOINTS_0")].componentType) {
+            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: processJoints(glm::u8vec4{}); break;
+            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: processJoints(glm::u16vec4{}); break;
+            default: throw std::runtime_error("Component type cannot be processed for bone indices. Please add.");
+        }
+    }
+
+    // Extract per-vertex bone weights
+    if(animPrimitive.attributes.contains("WEIGHTS_0")) {
+        const auto weights = getAttributeData<glm::vec4>(animModel, animPrimitive, "WEIGHTS_0");
+
+        for(size_t j = 0; j < weights.size(); j++) {
+            vertices[j].boneWeights = weights[j];
+        }
+    }
+
+    myMesh.vertices = std::move(vertices);
+
+    const std::vector<unsigned int> indicesFlat = getBufferData<unsigned int>(umeshModel, umeshModel.meshes[0].primitives[0].indices);
+    std::vector<glm::uvec3> triangles; //Indices into vertex array
+    for(int j = 0; j < indicesFlat.size(); j += 3) {
+        triangles.emplace_back(indicesFlat[j], indicesFlat[j + 1], indicesFlat[j + 2]);
+    }
+
+    for(const auto& [f, t] : std::views::zip(umesh.faces, triangles)) {
+        std::vector<uVertex> uvs; //micro vertices
+        for(int j = 0; j < f.V.rows(); j++) {
+            const auto& pos = f.V.row(j);
+            const auto& dis = f.VD.row(j);
+
+            uvs.emplace_back(glm::vec3{pos(0), pos(1), pos(2)}, glm::vec3{dis(0), dis(1), dis(2)});
+        }
+
+        std::vector<glm::uvec3> ufs; //micro faces
+        for(int j = 0; j < f.F.rows(); j++) {
+            const auto& indices = f.F.row(j);
+
+            ufs.emplace_back(indices(0), indices(1), indices(2));
+        }
+
+        myMesh.triangles.emplace_back(t, uvs, ufs);
+    }
+
+    auto node = *std::ranges::find(animModel.nodes, 0, &tinygltf::Node::mesh); //Find node corresponding to this mesh
+    setupMeshesInScene(myMesh.vertices, node);
+
+    boneTransformations(myMesh);
+
+    myMesh.parent = std::move(parent);
+
+    for(auto& v : myMesh.vertices) {
+        v.direction = getVertexDisplacementDir(v.position);
+    }
+
+    return {myMesh};
 }
 
 void TinyGLTFLoader::setupMeshesInScene(std::vector<Vertex>& vertices, const tinygltf::Node& node) {
@@ -167,29 +152,29 @@ void TinyGLTFLoader::setupMeshesInScene(std::vector<Vertex>& vertices, const tin
 }
 
 void TinyGLTFLoader::boneTransformations(Mesh& mesh) const {
-    const auto& ibms = getBufferData<glm::mat4>(model.skins[0].inverseBindMatrices);
+    const auto& ibms = getBufferData<glm::mat4>(animModel, animModel.skins[0].inverseBindMatrices);
 
-    for(const auto& skin : model.skins) {
+    for(const auto& skin : animModel.skins) {
         for(const auto& [nodeID, ibm] : std::views::zip(skin.joints, ibms)) {
             Bone b;
             b.ibm = ibm;
 
-            for(const auto& animation : model.animations) {
+            for(const auto& animation : animModel.animations) {
                 for(const auto& channel : animation.channels) {
                     if(channel.target_node == nodeID) {
                         const auto& sampler = animation.samplers[channel.sampler];
-                        const auto& timeData = getBufferData<float>(sampler.input);
+                        const auto& timeData = getBufferData<float>(animModel, sampler.input);
 
                         if(channel.target_path == "translation") {
-                            b.translation.addTransformations(timeData, getBufferData<glm::vec3>(sampler.output));
+                            b.translation.addTransformations(timeData, getBufferData<glm::vec3>(animModel, sampler.output));
                             b.translation.setInterpolationMode(sampler.interpolation);
                         }
                         else if(channel.target_path == "scale") {
-                            b.scale.addTransformations(timeData, getBufferData<glm::vec3>(sampler.output));
+                            b.scale.addTransformations(timeData, getBufferData<glm::vec3>(animModel, sampler.output));
                             b.scale.setInterpolationMode(sampler.interpolation);
                         }
                         else if(channel.target_path == "rotation") { //Rotation needs a bit more work, because we manually need to convert to quaternions
-                            const auto& rotationData = getBufferData<glm::vec4>(sampler.output);
+                            const auto& rotationData = getBufferData<glm::vec4>(animModel, sampler.output);
 
                             std::vector<glm::quat> quatRotations(rotationData.size());
                             std::transform(rotationData.begin(), rotationData.end(), quatRotations.begin(), [](glm::vec4 v) {

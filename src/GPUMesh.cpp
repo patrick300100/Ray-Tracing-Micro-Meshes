@@ -331,6 +331,7 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
 
 std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device5>& device) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
+    if(!std::filesystem::exists(umeshFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", umeshFilePath.string().c_str()));
 
     GLTFReadInfo read_micromesh;
     if (!read_gltf(umeshFilePath.string(), read_micromesh)) {
@@ -341,7 +342,7 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh();
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, umeshFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device); }
 
