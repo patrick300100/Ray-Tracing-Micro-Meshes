@@ -161,7 +161,6 @@ float3 getPlanePosition(float2 coords, int dOffset) {
     return positions2D[dOffset + index];
 }
 
-//TODO maybe not necessary to return bool? Just return t value
 bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t) {
 	float2 val1 = ray.origin - e.start.position;
     float2 val2 = e.end.position - e.start.position;
@@ -205,82 +204,59 @@ void sort(TriangleWithT ts[4], int size, out int indices[4]) {
     }
 }
 
-//Gives the distance from a point to an edge
-// @param p: the point
-// @param e: the edge
-// @return the (shortest) distance from p to e
-float distPointToEdge(float2 p, Edge e) {
-    float2 a = e.start.position;
-    float2 b = e.end.position;
+//Given an edge, a ray, and a point p, computes whether there is a ray passing between p and the edge.
+// @return true if the ray passes between the point and the edge, false if not. This function also returns true if the ray exactly hits p
+bool raySeparatesPointAndEdge(Edge e, Ray2D ray, float2 p) {
+    float2 A = e.start.position;
+    float2 B = e.end.position;
+    float2 R0 = ray.origin;
+    float2 Rd = ray.direction;
 
-    float2 ab = b - a;
-    float2 ap = p - a;
+    float oP = (Rd.x * (p.y - R0.y) - Rd.y * (p.x - R0.x));
+    float oA = (Rd.x * (A.y - R0.y) - Rd.y * (A.x - R0.x));
+    float oB = (Rd.x * (B.y - R0.y) - Rd.y * (B.x - R0.x));
 
-    float t = saturate(dot(ap, ab) / dot(ab, ab));
-    float2 closest = a + t * ab;
-    return length(p - closest);
+    return abs(oP) < 1e-5f || (oP * oA < 0) || (oP * oB < 0);
 }
 
-//Given an edge, returns the (displaced) position of the micro vertex that is most diverged.
-//So if you have an edge, it might contain micro vertices of the next subdivision level. These micro vertices may also be displaced away from the edge.
-//We return the micro verte that is the farthest away from the edge (if there is such micro vertex)
+//Given an edge, at most 2 triangles are touching it. On the edge, there will be micro vertices in subsequent subdisivion levels (called diverted vertices in this subdivision level).
+//These diverted vertices may alter the triangle region in future subdivision levels.
+//We check whether a ray hits a triangle in possible future subdivision levels by getting all vertices (of future subdivision levels) on the edge, and check whether the ray hits the neighbouring triangles
 // @param e: the edge
 // @param dOffset: the offset into the planePositions2D buffer
-// @return the most diverged micro vertex from the given edge
-void getMostOuterVertex(Edge e, int dOffset, out float distL, out Vertex2D vL, out float distR, out Vertex2D vR) {
+// @param ray: the ray
+// @return two boolean variables, one whether the triangle on the left side of the edge was hit, and one for the right side
+void checkNeighbourTriangles(Edge e, int dOffset, Ray2D ray, out bool intersectL, out bool intersectR) {
     int2 startCoord = min(e.start.coordinates, e.end.coordinates);
     int2 endCoord = max(e.start.coordinates, e.end.coordinates);
 
-    float2 maxOuterPosL, maxOuterPosR;
-    float maxDistanceL = 0.0f, maxDistanceR = 0.0f;
     if(startCoord.x == endCoord.x) {
         for(int i = startCoord.y + 1; i < endCoord.y; i++) {
             float2 planePos = getPlanePosition(float2(startCoord.x, i), dOffset).xy;
-            float dist = distPointToEdge(planePos, e);
+            bool separates = raySeparatesPointAndEdge(e, ray, planePos);
 
-            if(e.isRight(planePos) && dist > maxDistanceR) {
-                maxDistanceR = dist;
-                maxOuterPosR = planePos;
-            } else if(e.isLeft(planePos) && dist > maxDistanceL) {
-                maxDistanceL = dist;
-                maxOuterPosL = planePos;
-            }
+            if(separates && e.isRight(planePos)) intersectR = true;
+            else if(separates && e.isLeft(planePos)) intersectL = true;
         }
     } else if(startCoord.y == endCoord.y) {
         for(int i = startCoord.x + 1; i < endCoord.x; i++) {
             float2 planePos = getPlanePosition(float2(i, startCoord.y), dOffset).xy;
-            float dist = distPointToEdge(planePos, e);
+            bool separates = raySeparatesPointAndEdge(e, ray, planePos);
 
-            if(e.isRight(planePos) && dist > maxDistanceR) {
-                maxDistanceR = dist;
-                maxOuterPosR = planePos;
-            } else if(e.isLeft(planePos) && dist > maxDistanceL) {
-                maxDistanceL = dist;
-                maxOuterPosL = planePos;
-            }
+            if(separates && e.isRight(planePos)) intersectR = true;
+            else if(separates && e.isLeft(planePos)) intersectL = true;
         }
     } else {
         int increment = endCoord.x - startCoord.x;
 
         for(int i = 1; i < increment; i++) {
             float2 planePos = getPlanePosition(float2(startCoord.x + i, startCoord.y + 1), dOffset).xy;
-            float dist = distPointToEdge(planePos, e);
+            bool separates = raySeparatesPointAndEdge(e, ray, planePos);
 
-            if(e.isRight(planePos) && dist > maxDistanceR) {
-                maxDistanceR = dist;
-                maxOuterPosR = planePos;
-            } else if(e.isLeft(planePos) && dist > maxDistanceL) {
-                maxDistanceL = dist;
-                maxOuterPosL = planePos;
-            }
+            if(separates && e.isRight(planePos)) intersectR = true;
+            else if(separates && e.isLeft(planePos)) intersectL = true;
         }
     }
-
-    distR = maxDistanceR;
-    vR.position = maxOuterPosR;
-
-    distL = maxDistanceL;
-    vL.position = maxOuterPosL;
 }
 
 bool approximatelyEqual(float2 a, float2 b) {
@@ -436,22 +412,11 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
     [unroll] for(int i = 0; i < 9; i++) {
         Edge ou = allEdges[i];
 
-        float distL, distR;
-        Vertex2D ovL, ovR;
-        getMostOuterVertex(ou, dOffset, distL, ovL, distR, ovR);
+		bool intersectL, intersectR;
+        checkNeighbourTriangles(ou, dOffset, ray, intersectL, intersectR);
 
-        Edge divertedEdge1 = {ou.start, ovR};
-        Edge divertedEdge2 = {ovR, ou.end};
-        float divertedT = -1;
-
-        iwdeR[i] = distR > 0.0 && (rayIntersectsEdge(ray, divertedEdge1, divertedT) || rayIntersectsEdge(ray, divertedEdge2, divertedT));
-
-        if(i >= 6) {
-            Edge divertedEdge3 = {ou.start, ovL};
-            Edge divertedEdge4 = {ovL, ou.end};
-
-            iwdeL[i-6] = distL > 0.0 && (rayIntersectsEdge(ray, divertedEdge3, divertedT) || rayIntersectsEdge(ray, divertedEdge4, divertedT));
-        }
+        iwdeR[i] = intersectR;
+        if(i >= 6) iwdeL[i-6] = intersectL;
     }
 
     float2 midPoints[4];
@@ -524,6 +489,12 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
     if(v < -epsilon || u + v > 1.0f + epsilon) return false;
 
     float t = dot(edge2, qvec) * invDet;
+
+    float alpha = 1.0f - u - v;
+    float beta = u;
+    float gamma = v;
+
+    float3 fragSurfacePos = alpha * v0 + beta * v1 + gamma * v2;
 
     //Compute attributes needed for lighting calculation
     Attributes attr;
