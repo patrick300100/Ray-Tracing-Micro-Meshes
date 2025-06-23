@@ -105,7 +105,6 @@ public:
 
     void initImGui() const;
 
-    [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Device> get_device() const;
     [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
     void renderFrame(const CommandSender& cs, const glm::vec4& clearColor, const glm::uvec2& dimension, const std::function<void()>& render, const Shader& shader);

@@ -16,12 +16,6 @@
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-#include <comdef.h>
-
-Microsoft::WRL::ComPtr<ID3D12Device> GPUState::get_device() const {
-    return device;
-}
-
 Microsoft::WRL::ComPtr<IDXGISwapChain3> GPUState::get_swap_chain() const {
     return swapChain;
 }
@@ -110,14 +104,6 @@ void GPUState::cleanupDevice() {
     if(fenceEvent) { CloseHandle(fenceEvent); fenceEvent = nullptr; }
     if(pipeline) pipeline.Reset();
     if(depthStencilBuffer) depthStencilBuffer.Reset();
-
-#ifdef DX12_ENABLE_DEBUG_LAYER
-    IDXGIDebug1* pDebug = nullptr;
-    if(SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&pDebug)))) {
-        pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_DETAIL);
-        pDebug->Release();
-    }
-#endif
 }
 
 void GPUState::createRenderTarget() {

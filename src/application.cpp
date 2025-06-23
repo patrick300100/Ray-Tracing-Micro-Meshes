@@ -1,3 +1,5 @@
+#include <dxgidebug.h>
+
 #include "GPUMesh.h"
 #include <framework/disable_all_warnings.h>
 #include "framework/TinyGLTFLoader.h"
@@ -62,7 +64,7 @@ public:
 
         mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, device);
 
-        skinningShader = RasterizationShader(L"shaders/skinningVS.hlsl", L"shaders/skinningPS.hlsl", 5, gpuState.get_device());
+        skinningShader = RasterizationShader(L"shaders/skinningVS.hlsl", L"shaders/skinningPS.hlsl", 5, device);
 
         //Creating ray tracing shader
         {
@@ -76,7 +78,7 @@ public:
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
                {{SRV, 5}, {UAV, 1}, {CBV, 2}},
-               gpuState.get_device()
+               device
            );
 
             rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
@@ -86,7 +88,7 @@ public:
             vertices.reserve(mesh[0].cpuMesh.vertices.size());
             std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(vertices), [](const Vertex& v) { return RayTraceVertex{v.position}; });
 
-            vertexBuffer = DefaultBuffer<RayTraceVertex>(gpuState.get_device(), vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            vertexBuffer = DefaultBuffer<RayTraceVertex>(device, vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             vertexBuffer.upload(vertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<RayTraceVertex>(vertexBuffer.getBuffer());
 
@@ -118,11 +120,11 @@ public:
                 std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
             }
 
-            AABBBuffer = DefaultBuffer<AABB>(gpuState.get_device(), AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            AABBBuffer = DefaultBuffer<AABB>(device, AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             AABBBuffer.upload(AABBs, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<AABB>(AABBBuffer.getBuffer());
 
-            disBuffer = DefaultBuffer<glm::vec3>(gpuState.get_device(), displacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            disBuffer = DefaultBuffer<glm::vec3>(device, displacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             disBuffer.upload(displacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<glm::vec3>(disBuffer.getBuffer());
 
@@ -143,7 +145,7 @@ public:
 
             const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
 
-            gpuState.get_device()->CreateCommittedResource(
+            device->CreateCommittedResource(
                 &heapProps,
                 D3D12_HEAP_FLAG_NONE,
                 &texDesc,
@@ -155,17 +157,17 @@ public:
 
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
 
-            invViewProjBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 1, true);
+            invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
             invViewProjBuffer.upload({invViewProj});
             rtShader.createCBV(invViewProjBuffer.getBuffer());
 
-            meshDataBuffer = UploadBuffer<int>(gpuState.get_device(), 1, true);
+            meshDataBuffer = UploadBuffer<int>(device, 1, true);
             meshDataBuffer.upload({mesh[0].cpuMesh.subdivisionLevel()});
             rtShader.createCBV(meshDataBuffer.getBuffer());
 
             rtShader.createPipeline();
 
-            cw.execute(gpuState.get_device());
+            cw.execute(device);
             cw.reset();
 
             rtShader.createSBT(dimensions.x, dimensions.y);
@@ -173,11 +175,11 @@ public:
 
         gpuState.createPipeline(skinningShader);
 
-        boneBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 10, true);
-        mvpBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 1, true);
-        mvBuffer = UploadBuffer<glm::mat4>(gpuState.get_device(), 1, true);
-        displacementBuffer = UploadBuffer<float>(gpuState.get_device(), 1, true);
-        cameraPosBuffer = UploadBuffer<glm::vec3>(gpuState.get_device(), 1, true);
+        boneBuffer = UploadBuffer<glm::mat4>(device, 10, true);
+        mvpBuffer = UploadBuffer<glm::mat4>(device, 1, true);
+        mvBuffer = UploadBuffer<glm::mat4>(device, 1, true);
+        displacementBuffer = UploadBuffer<float>(device, 1, true);
+        cameraPosBuffer = UploadBuffer<glm::vec3>(device, 1, true);
     }
 
     void render() {
@@ -259,10 +261,10 @@ public:
     }
 
 private:
+    ComPtr<ID3D12Device5> device;
+
     GPUState gpuState;
     Window window;
-
-    ComPtr<ID3D12Device5> device;
 
     ComPtr<IDXGISwapChain3> swapChain;
     CommandSender swapChainCS; //Command queue and such for the swapchain
@@ -350,7 +352,6 @@ private:
     }
 
     void createDevice() {
-        // [DEBUG] Enable debug interface
 #ifdef DX12_ENABLE_DEBUG_LAYER
         ID3D12Debug1* pdx12Debug = nullptr;
         if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pdx12Debug)))) pdx12Debug->EnableDebugLayer();
@@ -358,7 +359,6 @@ private:
 
         D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&device));
 
-        // [DEBUG] Setup debug interface to break on any warnings/errors
 #ifdef DX12_ENABLE_DEBUG_LAYER
         if(pdx12Debug != nullptr) {
             ID3D12InfoQueue* pInfoQueue = nullptr;
@@ -443,6 +443,15 @@ int main(const int argc, char* argv[]) {
         Application app(umeshPath, umeshAnimPath);
         app.update();
     }
+
+
+#ifdef DX12_ENABLE_DEBUG_LAYER
+    IDXGIDebug1* pDebug = nullptr;
+    if(SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&pDebug)))) {
+        pDebug->ReportLiveObjects(DXGI_DEBUG_ALL, DXGI_DEBUG_RLO_DETAIL);
+        pDebug->Release();
+    }
+#endif
 
     return 0;
 }
