@@ -216,7 +216,7 @@ bool raySeparatesPointAndEdge(Edge e, Ray2D ray, float2 p) {
     float oA = (Rd.x * (A.y - R0.y) - Rd.y * (A.x - R0.x));
     float oB = (Rd.x * (B.y - R0.y) - Rd.y * (B.x - R0.x));
 
-    return abs(oP) < 1e-5f || (oP * oA < 0) || (oP * oB < 0);
+    return abs(oP) < 1e-4f || (oP * oA < 0) || (oP * oB < 0);
 }
 
 //Given an edge, at most 2 triangles are touching it. On the edge, there will be micro vertices in subsequent subdisivion levels (called diverted vertices in this subdivision level).
@@ -260,7 +260,7 @@ void checkNeighbourTriangles(Edge e, int dOffset, Ray2D ray, out bool intersectL
 }
 
 bool approximatelyEqual(float2 a, float2 b) {
-    return all(abs(a - b) < 1e-5f);
+    return all(abs(a - b) < 1e-4f);
 }
 
 bool isTriangleAlreadyInList(Triangle2D t, float2 midPoints[4], int count) {
@@ -467,7 +467,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
 }
 
 bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
-    const float epsilon = 1e-5f; //Needed for small floating-point errors
+    const float epsilon = 1e-4f; //Needed for small floating-point errors
 
     float3 origin = WorldRayOrigin();
     float3 dir = WorldRayDirection();
