@@ -18,8 +18,7 @@ Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> CommandSender::getCommandList
 }
 
 void CommandSender::execute(const Microsoft::WRL::ComPtr<ID3D12Device>& device) const {
-    HRESULT hr = cmdList->Close();
-    if(FAILED(hr)) std::cout << "Uh-oh...\n";
+    cmdList->Close();
 
     ID3D12CommandList* lists[] = { cmdList.Get() };
     cmdQueue->ExecuteCommandLists(_countof(lists), lists);

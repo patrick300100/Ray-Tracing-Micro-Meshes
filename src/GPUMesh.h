@@ -60,5 +60,5 @@ public:
     [[nodiscard]] D3D12_INDEX_BUFFER_VIEW getIndexBufferView() const;
     [[nodiscard]] UINT getIndexCount() const;
     [[nodiscard]] ComPtr<ID3D12Resource> getTLASBuffer() const;
-    std::vector<D3D12_RAYTRACING_AABB> getAABBs() const;
+    [[nodiscard]] std::vector<D3D12_RAYTRACING_AABB> getAABBs() const;
 };

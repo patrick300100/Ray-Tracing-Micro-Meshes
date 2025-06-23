@@ -489,12 +489,6 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 
     float t = dot(edge2, qvec) * invDet;
 
-    float alpha = 1.0f - u - v;
-    float beta = u;
-    float gamma = v;
-
-    float3 fragSurfacePos = alpha * v0 + beta * v1 + gamma * v2;
-
     //Compute attributes needed for lighting calculation
     Attributes attr;
     attr.N = normalize(cross(edge1, edge2));

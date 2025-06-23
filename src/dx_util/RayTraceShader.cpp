@@ -245,23 +245,14 @@ void RayTraceShader::createPipeline() {
     pipelineDesc.NumSubobjects = static_cast<UINT>(subobjects.size());
     pipelineDesc.pSubobjects = subobjects.data();
 
-    HRESULT hr = device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&pipelineStateObject));
-    if(FAILED(hr)) {
-        std::cout << "Uh-oh...\n";
-    }
+    device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&pipelineStateObject));
 
-    hr = pipelineStateObject.As(&pipelineProps);
-    if(FAILED(hr)) {
-        std::cout << "Uh-oh...\n";
-    }
+    pipelineStateObject.As(&pipelineProps);
 }
 
 void RayTraceShader::createSBT(const UINT w, const UINT h) {
     ComPtr<ID3D12StateObjectProperties> stateObjectProps;
-    HRESULT hr = pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProps));
-    if(FAILED(hr)) {
-        std::cout << "Uh-oh...\n";
-    }
+    pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProps));
 
     void* data;
     auto writeId = [&](const wchar_t* name) {
@@ -292,7 +283,6 @@ void RayTraceShader::createSBT(const UINT w, const UINT h) {
     writeId(L"MyHitGroup");
     shaderIDs->Unmap(0, nullptr);
 
-
     dispatchDesc = {
         .RayGenerationShaderRecord = {
             .StartAddress = shaderIDs->GetGPUVirtualAddress(),
@@ -303,44 +293,8 @@ void RayTraceShader::createSBT(const UINT w, const UINT h) {
         .HitGroupTable = {
             .StartAddress = shaderIDs->GetGPUVirtualAddress() + 2 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
             .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
-        .Width = static_cast<UINT>(w),
+        .Width = w,
         .Height = h,
         .Depth = 1
     };
-
-
-
-
-    // void* rayGenId = stateObjectProps->GetShaderIdentifier(L"RGMain");
-    // void* missId = stateObjectProps->GetShaderIdentifier(L"MissMain");
-    // void* hitGroupId = stateObjectProps->GetShaderIdentifier(L"MyHitGroup");
-    //
-    // UINT shaderIdSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-    // UINT shaderRecordAlignment = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
-    //
-    // UINT64 recordSize = alignUp(D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, shaderRecordAlignment);
-    //
-    // rayGenSBTBuffer = UploadBuffer<void*>(recordSize, device);
-    // rayGenSBTBuffer.upload({rayGenId}, shaderIdSize);
-    //
-    // missSBTBuffer = UploadBuffer<void*>(recordSize, device);
-    // missSBTBuffer.upload({missId}, shaderIdSize);
-    //
-    // hitGroupSBTBuffer = UploadBuffer<void*>(recordSize, device);
-    // hitGroupSBTBuffer.upload({hitGroupId}, shaderIdSize);
-
-    // dispatchDesc.RayGenerationShaderRecord.StartAddress = rayGenSBTBuffer.getBuffer()->GetGPUVirtualAddress();
-    // dispatchDesc.RayGenerationShaderRecord.SizeInBytes = recordSize;
-    //
-    // dispatchDesc.MissShaderTable.StartAddress = missSBTBuffer.getBuffer()->GetGPUVirtualAddress();
-    // dispatchDesc.MissShaderTable.SizeInBytes = recordSize;
-    // dispatchDesc.MissShaderTable.StrideInBytes = recordSize;
-    //
-    // dispatchDesc.HitGroupTable.StartAddress = hitGroupSBTBuffer.getBuffer()->GetGPUVirtualAddress();
-    // dispatchDesc.HitGroupTable.SizeInBytes = recordSize;
-    // dispatchDesc.HitGroupTable.StrideInBytes = recordSize;
-    //
-    // dispatchDesc.Width = w;
-    // dispatchDesc.Height = h;
-    // dispatchDesc.Depth = 1;
 }
