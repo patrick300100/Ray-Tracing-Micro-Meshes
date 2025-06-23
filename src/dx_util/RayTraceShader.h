@@ -81,7 +81,7 @@ public:
      * Creates an SRV for a buffer that should be used in this shader.
      *
      * It is important that the order in which you call these create*(...) methods are in line with how you passed them
-     * via the constructor. Please see the constructor documentation.
+     * via the constructor.
      *
      * @tparam T the type of the buffer
      * @param buffer the buffer
@@ -102,7 +102,7 @@ public:
 
     /**
      * Creates a UAV for the output texture
-     * @param buffer
+     * @param buffer the output texture
      */
     void createOutputUAV(const ComPtr<ID3D12Resource>& buffer) {
         D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
@@ -118,7 +118,7 @@ public:
      * Creates a CBV for a buffer that should be used in this compute shader.
      *
      * It is important that the order in which you call these create*(...) methods are in line with how you passed them
-     * via the constructor. Please see the constructor documentation.
+     * via the constructor.
      *
      * @param buffer the buffer
      */

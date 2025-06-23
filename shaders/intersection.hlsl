@@ -85,7 +85,6 @@ struct TriangleWithT {
     TriangleDAUD tri;
     float minT; //Ray parameter `t` where ray entered the triangle
 };
-};
 
 cbuffer meshData : register(b1) {
     uint subDivLvl;
@@ -94,7 +93,7 @@ cbuffer meshData : register(b1) {
 StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<AABB> AABBs : register(t2);
 StructuredBuffer<float3> displacements : register(t3);
-StructuredBuffer<float3> positions2D : register(t4);
+StructuredBuffer<float3> positions2D : register(t4); //Contains 2D position in the xy entries, and height (to displace) in the z entry
 
 static const float MAX_FLOAT = 3.402823466e+38f;
 

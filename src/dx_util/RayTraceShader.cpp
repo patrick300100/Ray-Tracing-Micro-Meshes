@@ -256,11 +256,6 @@ void RayTraceShader::createPipeline() {
     }
 }
 
-template<typename T>
-T alignUp(T value, size_t alignment) {
-    return static_cast<T>((static_cast<size_t>(value) + (alignment - 1)) & ~(alignment - 1));
-}
-
 void RayTraceShader::createSBT(const UINT w, const UINT h) {
     ComPtr<ID3D12StateObjectProperties> stateObjectProps;
     HRESULT hr = pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProps));

@@ -19,6 +19,7 @@ DISABLE_WARNINGS_POP()
 #include <vector>
 #include <ranges>
 #include <framework/trackball.h>
+#include "Plane.h"
 
 #ifdef _DEBUG
 #define DX12_ENABLE_DEBUG_LAYER
@@ -100,7 +101,7 @@ public:
 
                 std::ranges::transform(triangle.uVertices, std::back_inserter(displacements), [](const uVertex& uv) { return uv.displacement; });
 
-
+                //Compute plane positions of each micro vertex
                 const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
                 const auto v1 = cpuMesh.vertices[triangle.baseVertexIndices.y];
                 const auto v2 = cpuMesh.vertices[triangle.baseVertexIndices.z];
@@ -112,7 +113,9 @@ public:
                 glm::vec3 T = normalize(e1);
                 glm::vec3 B = glm::normalize(cross(N, T));
 
-                std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return projectTo2D(uv.position + uv.displacement, T, B, N, v0.position); });
+                TBNPlane::Plane plane(T, B, N, v0.position);
+
+                std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
             }
 
             AABBBuffer = DefaultBuffer<AABB>(gpuState.get_device(), AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
@@ -210,10 +213,6 @@ public:
 
             //menu();
             //gpuState.renderFrame(window.getBackgroundColor(), window.getRenderDimension(), [this] { render(); }, skinningShader);
-            //gpuState.renderRaytracedScene(rtShader, raytracingOutput);
-
-
-
 
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
             invViewProjBuffer.upload({invViewProj});
