@@ -66,14 +66,6 @@ struct EdgeWithT {
 
 struct Triangle2D {
     Vertex2D vertices[3]; //3 vertices of triangle
-
-    float signedArea() {
-        float2 p0 = vertices[0].position;
-        float2 p1 = vertices[1].position;
-        float2 p2 = vertices[2].position;
-
-    	return (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
-	}
 };
 
 //A struct that contains 2 triangles: the triangle with displaced vertices and undisplaced vertices (in 2D)
@@ -235,20 +227,23 @@ float distPointToEdge(float2 p, Edge e) {
 // @param e: the edge
 // @param dOffset: the offset into the planePositions2D buffer
 // @return the most diverged micro vertex from the given edge
-Vertex2D getMostOuterVertex(Edge e, int dOffset, out float dist) {
+void getMostOuterVertex(Edge e, int dOffset, out float distL, out Vertex2D vL, out float distR, out Vertex2D vR) {
     int2 startCoord = min(e.start.coordinates, e.end.coordinates);
     int2 endCoord = max(e.start.coordinates, e.end.coordinates);
 
-    float2 maxOuterPos;
-    float maxDistance = 0.0f;
+    float2 maxOuterPosL, maxOuterPosR;
+    float maxDistanceL = 0.0f, maxDistanceR = 0.0f;
     if(startCoord.x == endCoord.x) {
         for(int i = startCoord.y + 1; i < endCoord.y; i++) {
             float2 planePos = getPlanePosition(float2(startCoord.x, i), dOffset).xy;
             float dist = distPointToEdge(planePos, e);
 
-            if(e.isRight(planePos) && dist > maxDistance) {
-                maxDistance = dist;
-                maxOuterPos = planePos;
+            if(e.isRight(planePos) && dist > maxDistanceR) {
+                maxDistanceR = dist;
+                maxOuterPosR = planePos;
+            } else if(e.isLeft(planePos) && dist > maxDistanceL) {
+                maxDistanceL = dist;
+                maxOuterPosL = planePos;
             }
         }
     } else if(startCoord.y == endCoord.y) {
@@ -256,9 +251,12 @@ Vertex2D getMostOuterVertex(Edge e, int dOffset, out float dist) {
             float2 planePos = getPlanePosition(float2(i, startCoord.y), dOffset).xy;
             float dist = distPointToEdge(planePos, e);
 
-            if(e.isRight(planePos) && dist > maxDistance) {
-                maxDistance = dist;
-                maxOuterPos = planePos;
+            if(e.isRight(planePos) && dist > maxDistanceR) {
+                maxDistanceR = dist;
+                maxOuterPosR = planePos;
+            } else if(e.isLeft(planePos) && dist > maxDistanceL) {
+                maxDistanceL = dist;
+                maxOuterPosL = planePos;
             }
         }
     } else {
@@ -268,16 +266,21 @@ Vertex2D getMostOuterVertex(Edge e, int dOffset, out float dist) {
             float2 planePos = getPlanePosition(float2(startCoord.x + i, startCoord.y + 1), dOffset).xy;
             float dist = distPointToEdge(planePos, e);
 
-            if(e.isRight(planePos) && dist > maxDistance) {
-                maxDistance = dist;
-                maxOuterPos = planePos;
+            if(e.isRight(planePos) && dist > maxDistanceR) {
+                maxDistanceR = dist;
+                maxOuterPosR = planePos;
+            } else if(e.isLeft(planePos) && dist > maxDistanceL) {
+                maxDistanceL = dist;
+                maxOuterPosL = planePos;
             }
         }
     }
 
-    dist = maxDistance;
-    Vertex2D v = {maxOuterPos, -1, float2(-1, -1)}; //We're only interested in the position, so fill vertex with dummy values
-    return v;
+    distR = maxDistanceR;
+    vR.position = maxOuterPosR;
+
+    distL = maxDistanceL;
+    vL.position = maxOuterPosL;
 }
 
 bool approximatelyEqual(float2 a, float2 b) {
@@ -298,9 +301,8 @@ bool isTriangleAlreadyInList(Triangle2D t, float2 midPoints[4], int count) {
 // @param tDis: the displaced triangle
 // @param tUndis: the undisplaced triangle
 // @param ray: the ray in 2D
-// @param sa: signed area of the base triangle. We use this to preserve vertex order (counter clockwise)
 // @return an array of triangles that the ray crossed in order
-IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis, Ray2D ray, int dOffset, Plane p, float sa) {
+IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis, Ray2D ray, int dOffset, Plane p) {
     /*
      * We have our triangle defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v2
@@ -429,18 +431,27 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
      */
     Edge allEdges[9] = {e0Displaced, e1Displaced, e2Displaced, e3Displaced, e4Displaced, e5Displaced, e6Displaced, e7Displaced, e8Displaced};
 
-    bool iwde[9]; //intersect with diverged edges
+    bool iwdeR[9]; //intersect with edges that divert to the right
+    bool iwdeL[3]; //intersect with edges that divert to the left (only for inner edges)
     [unroll] for(int i = 0; i < 9; i++) {
         Edge ou = allEdges[i];
 
-        float dist;
-        Vertex2D ov = getMostOuterVertex(ou, dOffset, dist);
+        float distL, distR;
+        Vertex2D ovL, ovR;
+        getMostOuterVertex(ou, dOffset, distL, ovL, distR, ovR);
 
-        Edge divertedEdge1 = {ou.start, ov};
-        Edge divertedEdge2 = {ov, ou.end};
+        Edge divertedEdge1 = {ou.start, ovR};
+        Edge divertedEdge2 = {ovR, ou.end};
         float divertedT = -1;
 
-        iwde[i] = dist > 0.0 && (rayIntersectsEdge(ray, divertedEdge1, divertedT) || rayIntersectsEdge(ray, divertedEdge2, divertedT));
+        iwdeR[i] = distR > 0.0 && (rayIntersectsEdge(ray, divertedEdge1, divertedT) || rayIntersectsEdge(ray, divertedEdge2, divertedT));
+
+        if(i >= 6) {
+            Edge divertedEdge3 = {ou.start, ovL};
+            Edge divertedEdge4 = {ovL, ou.end};
+
+            iwdeL[i-6] = distL > 0.0 && (rayIntersectsEdge(ray, divertedEdge3, divertedT) || rayIntersectsEdge(ray, divertedEdge4, divertedT));
+        }
     }
 
     float2 midPoints[4];
@@ -450,7 +461,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         midPoints[mpCount] = (1.0f/3.0f) * t.vertices[0].position + (1.0f/3.0f) * t.vertices[1].position + (1.0f/3.0f) * t.vertices[2].position;
     }
 
-    if(iwde[0] || iwde[5]) {
+    if(iwdeR[0] || iwdeR[5] || iwdeL[2]) {
         Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced}, tU = {v0Undisplaced, uv0, uv2};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
@@ -459,7 +470,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         	its.count++;
         }
     }
-    if(iwde[1] || iwde[2]) {
+    if(iwdeR[1] || iwdeR[2] || iwdeL[0]) {
         Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced}, tU = {uv0, v1Undisplaced, uv1};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
@@ -468,7 +479,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         	its.count++;
         }
     }
-    if(iwde[3] || iwde[4]) {
+    if(iwdeR[3] || iwdeR[4] || iwdeL[1]) {
         Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced}, tU = {uv1, v2Undisplaced, uv2};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
@@ -477,7 +488,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
         	its.count++;
         }
     }
-    if(iwde[6] || iwde[7] || iwde[8]) {
+    if(iwdeR[6] || iwdeR[7] || iwdeR[8]) {
         Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced}, tU = {uv0, uv1, uv2};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
@@ -491,7 +502,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
 }
 
 bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
-    const float epsilon = 1e-6f; //Needed for small floating-point errors
+    const float epsilon = 1e-5f; //Needed for small floating-point errors
 
     float3 origin = WorldRayOrigin();
     float3 dir = WorldRayDirection();
@@ -544,8 +555,6 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
     StackElement se = { rootTri, 0 };
     stack[stackTop++] = se;
 
-    float sa = rootTri.tUndisplaced.signedArea();
-
     while(stackTop > 0) {
         StackElement current = stack[--stackTop];
 
@@ -562,7 +571,7 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
 
             if(rayTraceTriangle(vs3D[0].position, vs3D[1].position, vs3D[2].position)) return; //Ray hits triangle, so we can stop searching
         } else {
-            IntersectedTriangles its = getIntersectedTriangles(current.tri.tDisplaced, current.tri.tUndisplaced, ray, dOffset, p, sa);
+            IntersectedTriangles its = getIntersectedTriangles(current.tri.tDisplaced, current.tri.tUndisplaced, ray, dOffset, p);
 
             //Push intersected triangles in reverse order to maintain correct processing order (triangles should be processed in the order the ray hits them)
             //TODO switching data structure to a queue would make more sense...
