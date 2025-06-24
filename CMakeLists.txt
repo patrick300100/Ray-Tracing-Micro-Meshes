@@ -22,6 +22,18 @@ target_link_libraries(Micro_Meshes PRIVATE CGFramework d3d12 dxgi d3dcompiler dx
 enable_sanitizers(Micro_Meshes)
 set_project_warnings(Micro_Meshes)
 
+# Copy shader compilation files to build directory
+add_custom_command(TARGET Micro_Meshes POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_SOURCE_DIR}/framework/third_party/dxc/dxcompiler.dll"
+		$<TARGET_FILE_DIR:Micro_Meshes>
+)
+add_custom_command(TARGET Micro_Meshes POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_SOURCE_DIR}/framework/third_party/dxc/dxil.dll"
+		$<TARGET_FILE_DIR:Micro_Meshes>
+)
+
 if (MSVC)
 	target_compile_definitions(Micro_Meshes PRIVATE _USE_MATH_DEFINES)
 endif()

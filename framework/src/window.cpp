@@ -241,7 +241,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             break;
         }
         case WM_SIZE:
-            if(windowData->gpuState->get_device() != nullptr && wParam != SIZE_MINIMIZED) {
+            if(wParam != SIZE_MINIMIZED) {
                 windowData->gpuState->waitForLastSubmittedFrame();
                 windowData->gpuState->cleanupRenderTarget();
                 HRESULT result = windowData->gpuState->get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
@@ -277,4 +277,17 @@ HWND Window::getHWND() const {
 
 WNDCLASSEXW Window::getWc() const {
     return wc;
+}
+
+glm::uvec2 Window::getRenderDimension() const {
+    RECT clientRect;
+    GetClientRect(hwnd, &clientRect);
+    int w = clientRect.right  - clientRect.left;
+    int h = clientRect.bottom - clientRect.top;
+
+    return {w, h};
+}
+
+glm::vec4 Window::getBackgroundColor() const {
+    return backgroundColor;
 }

@@ -34,7 +34,6 @@ void Shader::addStage(const LPCWSTR& shaderFile, const LPCSTR& entryFunction, co
     shaders.push_back(shaderBlob);
 }
 
-Microsoft::WRL::ComPtr<ID3DBlob> Shader::getSignature() const {
-    return signature;
+Microsoft::WRL::ComPtr<ID3D12RootSignature> Shader::getRootSignature() const {
+    return rootSignature;
 }
-

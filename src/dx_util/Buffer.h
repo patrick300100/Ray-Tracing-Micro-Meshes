@@ -7,7 +7,6 @@
 class Buffer {
 protected:
     Microsoft::WRL::ComPtr<ID3D12Resource> buffer;
-    unsigned long long size = 0;
 
 public:
     virtual ~Buffer() = default;

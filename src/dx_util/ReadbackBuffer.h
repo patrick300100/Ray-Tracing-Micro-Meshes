@@ -7,11 +7,9 @@ class ReadbackBuffer final : public Buffer {
 public:
     ReadbackBuffer() = default;
 
-    ReadbackBuffer(const ComPtr<ID3D12Device>& device, const int sizeInBytes) {
-        this->size = sizeInBytes;
-
+    ReadbackBuffer(const ComPtr<ID3D12Device>& device, const unsigned long long sizeInBytes) {
         const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_READBACK);
-        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(this->size);
+        const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeInBytes);
 
         device->CreateCommittedResource(
             &heapProps,

@@ -1,8 +1,13 @@
 #include "GPUMesh.h"
 
-#include <d3dx12.h>
+#include <windows.h>
 #include <framework/disable_all_warnings.h>
 #include <framework/TinyGLTFLoader.h>
+
+#include "CommandSender.h"
+#include "ComputeShader.h"
+#include "DefaultBuffer.h"
+#include "ReadbackBuffer.h"
 #include "UploadBuffer.h"
 
 DISABLE_WARNINGS_PUSH()
@@ -12,8 +17,72 @@ DISABLE_WARNINGS_PUSH()
 DISABLE_WARNINGS_POP()
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh, const Microsoft::WRL::ComPtr<ID3D12Device>& device): cpuMesh(cpuMesh) {
+struct SimpleTriangle {
+    unsigned int uVerticesStart;
+    unsigned int uVerticesCount;
+};
+
+struct SimpleVertex {
+    glm::vec3 position;
+    glm::vec3 displacement;
+};
+
+GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuMesh(cpuMesh) {
+    //Prepare buffer data for use in compute shader
+    std::vector<SimpleTriangle> triangles;
+    std::vector<uVertex> uVertices;
+    for(const auto& t : cpuMesh.triangles) {
+        SimpleTriangle st{};
+
+        st.uVerticesStart = uVertices.size();
+        st.uVerticesCount = t.uVertices.size();
+
+        triangles.push_back(st);
+        uVertices.insert(uVertices.end(), t.uVertices.begin(), t.uVertices.end());
+    }
+
+    CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_COMPUTE);
+    cw.reset();
+
+    //Create buffers for on the GPU and upload data to those buffers
+    DefaultBuffer<uVertex> microVertexBuffer(device, uVertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+    microVertexBuffer.upload(uVertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    DefaultBuffer<SimpleTriangle> triangleBuffer(device, triangles.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+    triangleBuffer.upload(triangles, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+    DefaultBuffer<D3D12_RAYTRACING_AABB> outputBuffer(device, triangles.size(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    //Execute, wait and reset for later use
+    cw.execute(device);
+    cw.reset();
+
+    //Create our compute shader and execute it (computing an AABB around each triangle)
+    ComputeShader cs(RESOURCE_ROOT L"shaders/createAABBs.hlsl", device, {{SRV, 2}, {UAV, 1}}, sizeof(D3D12_RAYTRACING_AABB) * triangles.size());
+    cs.createSRV<uVertex>(microVertexBuffer.getBuffer());
+    cs.createSRV<SimpleTriangle>(triangleBuffer.getBuffer());
+    cs.createUAV<D3D12_RAYTRACING_AABB>(outputBuffer.getBuffer());
+
+    AABBs = cs.execute<D3D12_RAYTRACING_AABB>(outputBuffer.getBuffer(), triangles.size());
+
+    //Create BLAS AND TLAS
+    DefaultBuffer<void> scratchBufferBLAS;
+    createBLAS(device, cw.getCommandList(), triangles.size(), outputBuffer.getBuffer(), scratchBufferBLAS);
+
+    DefaultBuffer<void> scratchBufferTLAS;
+    UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC> instanceBuffer(device, 1);
+    createTLAS(device, cw.getCommandList(), scratchBufferTLAS, instanceBuffer);
+
+    cw.execute(device);
+
+
+
+
+
+
+
     const auto [vData, iData] = cpuMesh.allTriangles();
 
     //Create vertex buffer
@@ -46,6 +115,11 @@ GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
     vertexBufferView(other.vertexBufferView),
     indexBufferView(other.indexBufferView),
     nIndices(other.nIndices),
+    vertexBuffer(std::move(other.vertexBuffer)),
+    indexBuffer(std::move(other.indexBuffer)),
+    AABBs(std::move(other.AABBs)),
+    blasBuffer(std::move(other.blasBuffer)),
+    tlasBuffer(std::move(other.tlasBuffer)),
     cpuMesh(std::move(other.cpuMesh))
 {
 }
@@ -56,14 +130,20 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
         cpuMesh = std::move(other.cpuMesh);
         vertexBufferView = other.vertexBufferView;
         indexBufferView = other.indexBufferView;
+        vertexBuffer = std::move(other.vertexBuffer);
+        indexBuffer = std::move(other.indexBuffer);
+        AABBs = std::move(other.AABBs);
         nIndices = other.nIndices;
+        blasBuffer = std::move(other.blasBuffer);
+        tlasBuffer = std::move(other.tlasBuffer);
     }
 
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device>& device) {
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device5>& device) {
     if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
+    if(!std::filesystem::exists(umeshFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", umeshFilePath.string().c_str()));
 
     GLTFReadInfo read_micromesh;
     if (!read_gltf(umeshFilePath.string(), read_micromesh)) {
@@ -74,7 +154,7 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, read_micromesh).toMesh();
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, umeshFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device); }
 
@@ -104,3 +184,94 @@ D3D12_INDEX_BUFFER_VIEW GPUMesh::getIndexBufferView() const {
 UINT GPUMesh::getIndexCount() const {
     return nIndices;
 }
+
+void GPUMesh::createBLAS(
+    const ComPtr<ID3D12Device5>& device5,
+    const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,
+    UINT nAABB,
+    const ComPtr<ID3D12Resource>& outputBuffer,
+    DefaultBuffer<void>& scratchBuffer)
+{
+    D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
+    geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
+    geometryDesc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+    geometryDesc.AABBs.AABBCount = nAABB;
+    geometryDesc.AABBs.AABBs.StartAddress = outputBuffer->GetGPUVirtualAddress();
+    geometryDesc.AABBs.AABBs.StrideInBytes = sizeof(D3D12_RAYTRACING_AABB);
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+    inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+    inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    inputs.NumDescs = 1;
+    inputs.pGeometryDescs = &geometryDesc;
+    inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo = {};
+    device5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
+
+    scratchBuffer = DefaultBuffer<void>(prebuildInfo.ScratchDataSizeInBytes, device5, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    blasBuffer = DefaultBuffer<void>(prebuildInfo.ResultDataMaxSizeInBytes, device5, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+    buildDesc.Inputs = inputs;
+    buildDesc.ScratchAccelerationStructureData = scratchBuffer.getBuffer()->GetGPUVirtualAddress();
+    buildDesc.DestAccelerationStructureData = blasBuffer.getBuffer()->GetGPUVirtualAddress();
+
+    cmdList4->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+    D3D12_RESOURCE_BARRIER uavBarrier = {};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarrier.UAV.pResource = blasBuffer.getBuffer().Get();
+    cmdList4->ResourceBarrier(1, &uavBarrier);
+}
+
+void GPUMesh::createTLAS(
+    const ComPtr<ID3D12Device5>& device5,
+    const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,
+    DefaultBuffer<void>& scratchBuffer,
+    UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC>& instanceBuffer)
+{
+    D3D12_RAYTRACING_INSTANCE_DESC instanceDesc = {};
+    instanceDesc.InstanceID = 0;
+    instanceDesc.InstanceContributionToHitGroupIndex = 0;
+    instanceDesc.InstanceMask = 0xFF;
+    instanceDesc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+    instanceDesc.Transform[0][0] = instanceDesc.Transform[1][1] = instanceDesc.Transform[2][2] = 1; //Identity matrix for Transform attribute
+    instanceDesc.AccelerationStructure = blasBuffer.getBuffer()->GetGPUVirtualAddress();
+
+    instanceBuffer.upload({instanceDesc});
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+    inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+    inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    inputs.NumDescs = 1;
+    inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    inputs.InstanceDescs = instanceBuffer.getBuffer()->GetGPUVirtualAddress();
+
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo = {};
+    device5->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
+
+    scratchBuffer = DefaultBuffer<void>(prebuildInfo.ScratchDataSizeInBytes, device5, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    tlasBuffer = DefaultBuffer<void>(prebuildInfo.ResultDataMaxSizeInBytes, device5, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+    buildDesc.Inputs = inputs;
+    buildDesc.ScratchAccelerationStructureData = scratchBuffer.getBuffer()->GetGPUVirtualAddress();
+    buildDesc.DestAccelerationStructureData = tlasBuffer.getBuffer()->GetGPUVirtualAddress();
+
+    cmdList4->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    barrier.UAV.pResource = tlasBuffer.getBuffer().Get();
+    cmdList4->ResourceBarrier(1, &barrier);
+}
+
+ComPtr<ID3D12Resource> GPUMesh::getTLASBuffer() const {
+    return tlasBuffer.getBuffer();
+}
+
+std::vector<D3D12_RAYTRACING_AABB> GPUMesh::getAABBs() const {
+    return AABBs;
+}
+

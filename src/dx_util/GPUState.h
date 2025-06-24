@@ -6,8 +6,11 @@
 #include <wrl/client.h>
 #include <functional>
 #include <glm/vec2.hpp>
+#include <glm/vec4.hpp>
 
+#include "CommandSender.h"
 #include "RasterizationShader.h"
+#include "RayTraceShader.h"
 #include "shader.h"
 
 struct FrameContext {
@@ -87,14 +90,13 @@ class GPUState {
     D3D12_CPU_DESCRIPTOR_HANDLE mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
 
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pipeline;
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
 
     Microsoft::WRL::ComPtr<ID3D12Resource> depthStencilBuffer;
 
 public:
     ~GPUState();
 
-    bool createDevice(HWND hWnd);
+    bool createDevice(const ComPtr<ID3D12Device5>& d, const ComPtr<IDXGISwapChain3>& sc);
     void cleanupDevice();
     void createRenderTarget();
     void cleanupRenderTarget();
@@ -103,12 +105,11 @@ public:
 
     void initImGui() const;
 
-    [[nodiscard]] Microsoft::WRL::ComPtr<ID3D12Device> get_device() const;
     [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
 
-    void renderFrame(const ImVec4& clearColor, const std::function<void()>& render, const glm::ivec2& windowSize);
+    void renderFrame(const CommandSender& cs, const glm::vec4& clearColor, const glm::uvec2& dimension, const std::function<void()>& render, const Shader& shader);
 
-    void createDepthBuffer();
+    void createDepthBuffer(const glm::uvec2& dimension);
     void createPipeline(const RasterizationShader& shaders);
 
     void drawMesh(D3D12_VERTEX_BUFFER_VIEW vbv, D3D12_INDEX_BUFFER_VIEW ibv, UINT nIndices) const;
