@@ -53,6 +53,7 @@ public:
     );
 
     void createPipeline();
+    void createTrianglePipeline();
     void createSBT(UINT w, UINT h, const ComPtr<ID3D12GraphicsCommandList>& cmdList); //swapchain width and height
 
     [[nodiscard]] ComPtr<IDxcBlob> getRayGenShader() const;

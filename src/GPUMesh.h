@@ -17,7 +17,7 @@ struct MeshLoadingException final : std::runtime_error {
 class GPUMesh {
     D3D12_VERTEX_BUFFER_VIEW vertexBufferView = {};
     D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
-    UINT nIndices;
+    UINT nVertices, nIndices;
 
     ComPtr<ID3D12Resource> vertexBuffer;
     ComPtr<ID3D12Resource> indexBuffer;
@@ -28,13 +28,22 @@ class GPUMesh {
 
     //WireframeDraw wfDraw;
 
+    //Create BLAS with AABBs
     void createBLAS(
         const ComPtr<ID3D12Device5>& device5,
         const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,
         UINT nAABB,
-        const ComPtr<ID3D12Resource>& outputBuffer,
+        const ComPtr<ID3D12Resource>& AABBBuffer,
         DefaultBuffer<void>& scratchBuffer
     );
+
+    //Create BLAS with triangles
+    void createTriangleBLAS(
+        const ComPtr<ID3D12Device5>& device5,
+        const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,
+        DefaultBuffer<void>& scratchBuffer
+    );
+
     void createTLAS(
         const ComPtr<ID3D12Device5>& device5,
         const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,
@@ -61,4 +70,6 @@ public:
     [[nodiscard]] UINT getIndexCount() const;
     [[nodiscard]] ComPtr<ID3D12Resource> getTLASBuffer() const;
     [[nodiscard]] std::vector<D3D12_RAYTRACING_AABB> getAABBs() const;
+    [[nodiscard]]ComPtr<ID3D12Resource> getVertexBuffer() const;
+    [[nodiscard]] ComPtr<ID3D12Resource> getIndexBuffer() const;
 };

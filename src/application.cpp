@@ -66,11 +66,11 @@ public:
 
         skinningShader = RasterizationShader(L"shaders/skinningVS.hlsl", L"shaders/skinningPS.hlsl", 5, device);
 
-        //Creating ray tracing shader
-        {
-            CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
-            cw.reset();
+        CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
+        cw.reset();
 
+        // //Creating ray tracing shader
+        {
             rtShader = RayTraceShader(
                RESOURCE_ROOT L"shaders/raygen.hlsl",
                RESOURCE_ROOT L"shaders/miss.hlsl",
@@ -171,6 +171,58 @@ public:
             cw.execute(device);
             cw.reset();
         }
+
+        //Creating ray tracing shader that ray traces without AABBs
+        // {
+        //     rtTriangleShader = RayTraceShader(
+        //        RESOURCE_ROOT L"shaders/raygen.hlsl",
+        //        RESOURCE_ROOT L"shaders/miss.hlsl",
+        //        RESOURCE_ROOT L"shaders/closesthitTriangle.hlsl",
+        //        RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
+        //        {},
+        //        {{SRV, 3}, {UAV, 1}, {CBV, 1}},
+        //        device
+        //     );
+        //
+        //     rtTriangleShader.createAccStrucSRV(mesh[0].getTLASBuffer());
+        //
+        //     const auto [vData, iData] = mesh[0].cpuMesh.allTriangles();
+        //     rtTriangleShader.createSRV<Vertex>(mesh[0].getVertexBuffer());
+        //     rtTriangleShader.createSRV<glm::uvec3>(mesh[0].getIndexBuffer());
+        //
+        //
+        //     //Creating output texture
+        //     auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+        //         DXGI_FORMAT_R8G8B8A8_UNORM,
+        //         dimensions.x,
+        //         dimensions.y,
+        //         1,
+        //         1
+        //     );
+        //     texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        //
+        //     const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+        //
+        //     device->CreateCommittedResource(
+        //         &heapProps,
+        //         D3D12_HEAP_FLAG_NONE,
+        //         &texDesc,
+        //         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        //         nullptr,
+        //         IID_PPV_ARGS(&raytracingOutput));
+        //
+        //     rtTriangleShader.createOutputUAV(raytracingOutput);
+        //
+        //
+        //     invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
+        //     rtTriangleShader.createCBV(invViewProjBuffer.getBuffer());
+        //
+        //     rtTriangleShader.createTrianglePipeline();
+        //     rtTriangleShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
+        //
+        //     cw.execute(device);
+        //     cw.reset();
+        // }
 
         gpuState.createPipeline(skinningShader);
 
@@ -294,7 +346,7 @@ private:
     UploadBuffer<glm::vec3> cameraPosBuffer;
 
     ComPtr<ID3D12Resource> raytracingOutput;
-    RayTraceShader rtShader;
+    RayTraceShader rtShader, rtTriangleShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
     UploadBuffer<int> meshDataBuffer;
     DefaultBuffer<AABB> AABBBuffer;

@@ -248,6 +248,98 @@ void RayTraceShader::createPipeline() {
     device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&pipelineStateObject));
 }
 
+void RayTraceShader::createTrianglePipeline() {
+    // Raytracing pipeline subobjects
+    std::vector<D3D12_STATE_SUBOBJECT> subobjects;
+    subobjects.reserve(8);
+
+    // Raygen
+    auto raygenShader = getRayGenShader();
+    D3D12_DXIL_LIBRARY_DESC raygenLibDesc = {};
+    D3D12_SHADER_BYTECODE raygenBytecode = { raygenShader->GetBufferPointer(), raygenShader->GetBufferSize() };
+    D3D12_EXPORT_DESC raygenExport = { L"RGMain", L"main", D3D12_EXPORT_FLAG_NONE };
+    raygenLibDesc.DXILLibrary = raygenBytecode;
+    raygenLibDesc.NumExports = 1;
+    raygenLibDesc.pExports = &raygenExport;
+
+    D3D12_STATE_SUBOBJECT raygenLib = {};
+    raygenLib.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+    raygenLib.pDesc = &raygenLibDesc;
+    subobjects.push_back(raygenLib);
+
+    // Miss
+    auto missShader = getMissShader();
+    D3D12_DXIL_LIBRARY_DESC missLibDesc = {};
+    D3D12_SHADER_BYTECODE missBytecode = { missShader->GetBufferPointer(), missShader->GetBufferSize() };
+    D3D12_EXPORT_DESC missExport = { L"MissMain", L"main", D3D12_EXPORT_FLAG_NONE };
+    missLibDesc.DXILLibrary = missBytecode;
+    missLibDesc.NumExports = 1;
+    missLibDesc.pExports = &missExport;
+
+    D3D12_STATE_SUBOBJECT missLib = {};
+    missLib.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+    missLib.pDesc = &missLibDesc;
+    subobjects.push_back(missLib);
+
+    // ClosestHit
+    auto closestHitShader = getClosestHitShader();
+    D3D12_DXIL_LIBRARY_DESC closestHitLibDesc = {};
+    D3D12_SHADER_BYTECODE closestHitBytecode = { closestHitShader->GetBufferPointer(), closestHitShader->GetBufferSize() };
+    D3D12_EXPORT_DESC closestHitExport = { L"CHMain", L"main", D3D12_EXPORT_FLAG_NONE };
+    closestHitLibDesc.DXILLibrary = closestHitBytecode;
+    closestHitLibDesc.NumExports = 1;
+    closestHitLibDesc.pExports = &closestHitExport;
+
+    D3D12_STATE_SUBOBJECT closestHitLib = {};
+    closestHitLib.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+    closestHitLib.pDesc = &closestHitLibDesc;
+    subobjects.push_back(closestHitLib);
+
+    D3D12_HIT_GROUP_DESC hitGroupDesc = {};
+    hitGroupDesc.ClosestHitShaderImport = L"CHMain";
+    hitGroupDesc.HitGroupExport = L"MyHitGroup"; // Named export for SBT
+    hitGroupDesc.Type = D3D12_HIT_GROUP_TYPE_TRIANGLES;
+
+    D3D12_STATE_SUBOBJECT hitGroupSubobject = {};
+    hitGroupSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP;
+    hitGroupSubobject.pDesc = &hitGroupDesc;
+    subobjects.push_back(hitGroupSubobject);
+
+    // Global Root Signature
+    D3D12_STATE_SUBOBJECT globalRootSigSubobject = {};
+    globalRootSigSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_GLOBAL_ROOT_SIGNATURE;
+    globalRootSigSubobject.pDesc = globalRootSignature.GetAddressOf();
+    subobjects.push_back(globalRootSigSubobject);
+
+    // Shader config
+    D3D12_RAYTRACING_SHADER_CONFIG shaderConfig = {};
+    shaderConfig.MaxPayloadSizeInBytes = sizeof(float) * 3;
+    shaderConfig.MaxAttributeSizeInBytes = sizeof(float) * 2;
+
+    D3D12_STATE_SUBOBJECT shaderConfigSubobject = {};
+    shaderConfigSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG;
+    shaderConfigSubobject.pDesc = &shaderConfig;
+    subobjects.push_back(shaderConfigSubobject);
+
+    // Pipeline config
+    D3D12_RAYTRACING_PIPELINE_CONFIG pipelineConfig = {};
+    pipelineConfig.MaxTraceRecursionDepth = 1;
+
+    D3D12_STATE_SUBOBJECT pipelineConfigSubobject = {};
+    pipelineConfigSubobject.Type = D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_PIPELINE_CONFIG;
+    pipelineConfigSubobject.pDesc = &pipelineConfig;
+    subobjects.push_back(pipelineConfigSubobject);
+
+    // Assemble state object
+    D3D12_STATE_OBJECT_DESC pipelineDesc = {};
+    pipelineDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+    pipelineDesc.NumSubobjects = static_cast<UINT>(subobjects.size());
+    pipelineDesc.pSubobjects = subobjects.data();
+
+    device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&pipelineStateObject));
+}
+
+
 void RayTraceShader::createSBT(const UINT w, const UINT h, const ComPtr<ID3D12GraphicsCommandList>& cmdList) {
     ComPtr<ID3D12StateObjectProperties> stateObjectProps;
     pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProps));
