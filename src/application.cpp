@@ -166,11 +166,10 @@ public:
             rtShader.createCBV(meshDataBuffer.getBuffer());
 
             rtShader.createPipeline();
+            rtShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
 
             cw.execute(device);
             cw.reset();
-
-            rtShader.createSBT(dimensions.x, dimensions.y);
         }
 
         gpuState.createPipeline(skinningShader);

@@ -6,6 +6,7 @@
 #include <dxcapi.h>
 #include <vector>
 
+#include "DefaultBuffer.h"
 #include "UploadBuffer.h"
 #pragma comment(lib, "dxcompiler.lib")
 
@@ -24,9 +25,7 @@ class RayTraceShader {
     UINT descriptorSize{};
     ComPtr<ID3D12RootSignature> localRootSignature;
 
-    ComPtr<ID3D12StateObjectProperties> pipelineProps;
-
-    UploadBuffer<void*> rayGenSBTBuffer, missSBTBuffer, hitGroupSBTBuffer;
+    DefaultBuffer<void*> rayGenSBTBuffer, missSBTBuffer, hitGroupSBTBuffer;
 
     enum RootSignatureType {
         GLOBAL,
@@ -41,7 +40,6 @@ public:
     ComPtr<ID3D12StateObject> pipelineStateObject;
     ComPtr<ID3D12RootSignature> globalRootSignature;
     ComPtr<ID3D12DescriptorHeap> descriptorHeap;
-    ComPtr<ID3D12Resource> shaderIDs;
 
     RayTraceShader() = default;
     RayTraceShader(
@@ -55,7 +53,7 @@ public:
     );
 
     void createPipeline();
-    void createSBT(UINT w, UINT h); //swapchain width and height
+    void createSBT(UINT w, UINT h, const ComPtr<ID3D12GraphicsCommandList>& cmdList); //swapchain width and height
 
     [[nodiscard]] ComPtr<IDxcBlob> getRayGenShader() const;
     [[nodiscard]] ComPtr<IDxcBlob> getMissShader() const;
@@ -100,6 +98,7 @@ public:
         cpuHandle.ptr += descriptorSize;
     }
 
+
     /**
      * Creates a UAV for the output texture
      * @param buffer the output texture
@@ -115,7 +114,7 @@ public:
     }
 
     /**
-     * Creates a CBV for a buffer that should be used in this compute shader.
+     * Creates a CBV for a buffer that should be used in this shader.
      *
      * It is important that the order in which you call these create*(...) methods are in line with how you passed them
      * via the constructor.

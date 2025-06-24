@@ -50,8 +50,27 @@ public:
         );
     }
 
+    /**
+     * Uploads data to this default buffer.
+     *
+     * @param data the data
+     * @param cmdList a command list
+     * @param afterState the state of this buffer after it copied the elements
+     */
     void upload(const std::vector<T>& data, const ComPtr<ID3D12GraphicsCommandList>& cmdList, const D3D12_RESOURCE_STATES afterState) {
-        uploadBuffer.upload(data);
+        upload(data.data(), sizeof(T) * data.size(), cmdList, afterState);
+    }
+
+    /**
+     * Uploads data to this default buffer.
+     *
+     * @param data a pointer to the data
+     * @param size the size of data in bytes
+     * @param cmdList a command list
+     * @param afterState the state of this buffer after it copied the elements
+     */
+    void upload(const void* data, const size_t size, const ComPtr<ID3D12GraphicsCommandList>& cmdList, const D3D12_RESOURCE_STATES afterState) {
+        uploadBuffer.upload(data, size);
 
         const auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
             this->buffer.Get(),

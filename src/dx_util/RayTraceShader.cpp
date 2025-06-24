@@ -246,52 +246,30 @@ void RayTraceShader::createPipeline() {
     pipelineDesc.pSubobjects = subobjects.data();
 
     device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&pipelineStateObject));
-
-    pipelineStateObject.As(&pipelineProps);
 }
 
-void RayTraceShader::createSBT(const UINT w, const UINT h) {
+void RayTraceShader::createSBT(const UINT w, const UINT h, const ComPtr<ID3D12GraphicsCommandList>& cmdList) {
     ComPtr<ID3D12StateObjectProperties> stateObjectProps;
     pipelineStateObject->QueryInterface(IID_PPV_ARGS(&stateObjectProps));
 
-    void* data;
-    auto writeId = [&](const wchar_t* name) {
-        void* id = stateObjectProps->GetShaderIdentifier(name);
-        memcpy(data, id, D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-        data = static_cast<char*>(data) + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
-    };
+    rayGenSBTBuffer = DefaultBuffer<void*>(D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, device, D3D12_RESOURCE_STATE_GENERIC_READ);
+    rayGenSBTBuffer.upload(stateObjectProps->GetShaderIdentifier(L"RGMain"), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, cmdList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    D3D12_RESOURCE_DESC BASIC_BUFFER_DESC = {
-        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
-        .Width = 0, // Will be changed in copies
-        .Height = 1,
-        .DepthOrArraySize = 1,
-        .MipLevels = 1,
-        .SampleDesc = {.Count = 1, .Quality = 0},
-        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR};
+    missSBTBuffer = DefaultBuffer<void*>(D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, device, D3D12_RESOURCE_STATE_GENERIC_READ);
+    missSBTBuffer.upload(stateObjectProps->GetShaderIdentifier(L"MissMain"), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, cmdList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
-    D3D12_HEAP_PROPERTIES UPLOAD_HEAP = {.Type = D3D12_HEAP_TYPE_UPLOAD};
-    auto idDesc = BASIC_BUFFER_DESC;
-    idDesc.Width = 3 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT;
-    device->CreateCommittedResource(&UPLOAD_HEAP, D3D12_HEAP_FLAG_NONE, &idDesc,
-                                    D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                    IID_PPV_ARGS(&shaderIDs));
-
-    shaderIDs->Map(0, nullptr, &data);
-    writeId(L"RGMain");
-    writeId(L"MissMain");
-    writeId(L"MyHitGroup");
-    shaderIDs->Unmap(0, nullptr);
+    hitGroupSBTBuffer = DefaultBuffer<void*>(D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT, device, D3D12_RESOURCE_STATE_GENERIC_READ);
+    hitGroupSBTBuffer.upload(stateObjectProps->GetShaderIdentifier(L"MyHitGroup"), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES, cmdList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
     dispatchDesc = {
         .RayGenerationShaderRecord = {
-            .StartAddress = shaderIDs->GetGPUVirtualAddress(),
+            .StartAddress = rayGenSBTBuffer.getBuffer()->GetGPUVirtualAddress(),
             .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
         .MissShaderTable = {
-            .StartAddress = shaderIDs->GetGPUVirtualAddress() + D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
+            .StartAddress = missSBTBuffer.getBuffer()->GetGPUVirtualAddress(),
             .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
         .HitGroupTable = {
-            .StartAddress = shaderIDs->GetGPUVirtualAddress() + 2 * D3D12_RAYTRACING_SHADER_TABLE_BYTE_ALIGNMENT,
+            .StartAddress = hitGroupSBTBuffer.getBuffer()->GetGPUVirtualAddress(),
             .SizeInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES},
         .Width = w,
         .Height = h,

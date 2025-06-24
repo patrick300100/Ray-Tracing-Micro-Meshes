@@ -52,12 +52,33 @@ public:
         mappedPtr = nullptr;
     }
 
+    /**
+     * Upload data to this upload buffer.
+     *
+     * @param data the data
+     */
     void upload(const std::vector<T>& data) {
         upload(data, data.size() * sizeof(T));
     }
 
+    /**
+     * Uploads data to this upload buffer.
+     *
+     * @param data the data
+     * @param size the size of the data in bytes
+     */
     void upload(const std::vector<T>& data, const size_t size) {
-        memcpy(mappedPtr, data.data(), size);
+        upload(data.data(), size);
+    }
+
+    /**
+     * Uploads data to this upload buffer.
+     *
+     * @param data a pointer to the data
+     * @param size the size of the data in bytes
+     */
+    void upload(const void* data, const size_t size) const {
+        memcpy(mappedPtr, data, size);
     }
 
     UploadBuffer(const UploadBuffer&) = delete;
