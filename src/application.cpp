@@ -40,6 +40,7 @@ struct TriangleData {
     int nRows;
     int displacementOffset;
     glm::vec3 T, B, N;
+    int minMaxOffset;
 };
 
 class Application {
@@ -76,7 +77,7 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 4}, {UAV, 1}, {CBV, 2}},
+               {{SRV, 5}, {UAV, 1}, {CBV, 2}},
                device
            );
 
@@ -115,6 +116,14 @@ public:
                 std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
             }
 
+            std::vector<int> offsets;
+            const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(offsets);
+
+            if(offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
+            for(int i = 0; i < offsets.size(); i++) {
+                tData[i].minMaxOffset = offsets[i];
+            }
+
             triangleData = DefaultBuffer<TriangleData>(device, tData.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             triangleData.upload(tData, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<TriangleData>(triangleData.getBuffer());
@@ -122,6 +131,10 @@ public:
             planePositionsBuffer = DefaultBuffer<glm::vec3>(device, planePositions.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             planePositionsBuffer.upload(planePositions, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<glm::vec3>(planePositionsBuffer.getBuffer());
+
+            minMaxDisplacementBuffer = DefaultBuffer<glm::vec2>(device, minMaxDisplacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            minMaxDisplacementBuffer.upload(minMaxDisplacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<glm::vec2>(minMaxDisplacementBuffer.getBuffer());
 
 
             //Creating output texture
@@ -343,6 +356,7 @@ private:
     DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<glm::vec3> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
+    DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
 
     void menu() {
         ImGui::Begin("Window");

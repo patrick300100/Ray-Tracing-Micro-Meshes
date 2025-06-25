@@ -66,4 +66,6 @@ public:
 
 	[[nodiscard]] int numberOfVerticesOnEdge() const; //Computes the number of (micro) vertices on an edge
 	[[nodiscard]] int subdivisionLevel() const; //Computes the subdivision level of the triangles (same for each triangle)
+
+	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<int>& offsets) const; //Compute hierarchical minimum and maximum displacements
 };

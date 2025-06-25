@@ -2,6 +2,8 @@
 
 #include <ranges>
 #include <unordered_map>
+#include <queue>
+#include <unordered_set>
 
 struct VertexHash {
     size_t operator()(const Vertex& v) const {
@@ -172,3 +174,76 @@ int Mesh::numberOfVerticesOnEdge() const {
 int Mesh::subdivisionLevel() const {
     return std::countr_zero(triangles[0].uFaces.size()) / 2;
 }
+
+std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) const {
+    std::vector<glm::vec2> minMaxDisplacements;
+
+    struct TriangleElement {
+        std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
+        glm::vec3 v0, v1, v2; //Corner vertices
+    };
+
+    for(const auto& t : triangles) {
+        offsets.push_back(minMaxDisplacements.size());
+
+        //First we compute the normal of the triangle's plane
+        const auto v0 = vertices[t.baseVertexIndices.x];
+        const auto v1 = vertices[t.baseVertexIndices.y];
+        const auto v2 = vertices[t.baseVertexIndices.z];
+
+        glm::vec3 e1 = v1.position - v0.position;
+        glm::vec3 e2 = v2.position - v0.position;
+        glm::vec3 N = glm::normalize(cross(e1, e2)); // plane normal
+
+        //Then we set up the queue
+        std::queue<TriangleElement> queue;
+        queue.emplace(t.uFaces, v0.position, v1.position, v2.position);
+
+        while(!queue.empty()) {
+            //Compute min and max displacement of this triangle
+            const auto currentTriangle = queue.front();
+            queue.pop();
+            float minDisplacement = 100000.0f, maxDisplacement = -100000.0f;
+
+            for(const auto& ut : currentTriangle.uTriangles) {
+                for(int i = 0; i < 3; i++) {
+                    float height = glm::dot(t.uVertices[ut[i]].displacement, N);
+
+                    maxDisplacement = std::max(maxDisplacement, height);
+                    minDisplacement = std::min(minDisplacement, height);
+                }
+            }
+
+            minMaxDisplacements.emplace_back(minDisplacement, maxDisplacement);
+
+            if(currentTriangle.uTriangles.size() != 1) {
+                //Now we compute the next 4 triangles for processing
+                glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
+                glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
+                glm::vec3 v1v2 = (currentTriangle.v1 + currentTriangle.v2) / 2.0f;
+                TriangleElement t1{.v0 = currentTriangle.v0, .v1 = v0v1, .v2 = v0v2}; //Triangle near v0
+                TriangleElement t2{.v0 = v0v1, .v1 = currentTriangle.v1, .v2 = v1v2}; //Triangle near v1
+                TriangleElement t3{.v0 = v0v1, .v1 = v0v2, .v2 = v1v2}; //Center triangle
+                TriangleElement t4{.v0 = v0v2, .v1 = v1v2, .v2 = currentTriangle.v2}; //Triangle near v2
+
+                for(const auto& ut : currentTriangle.uTriangles) {
+                    glm::vec3 midPoint = (1.0f/3.0f) * t.uVertices[ut[0]].position + (1.0f/3.0f) * t.uVertices[ut[1]].position + (1.0f/3.0f) * t.uVertices[ut[2]].position;
+                    glm::vec3 bc = Triangle::computeBaryCoords(currentTriangle.v0, currentTriangle.v1, currentTriangle.v2, midPoint);
+
+                    if(bc.x > 0.5) t1.uTriangles.push_back(ut);
+                    else if(bc.y > 0.5) t2.uTriangles.push_back(ut);
+                    else if(bc.z > 0.5) t4.uTriangles.push_back(ut);
+                    else t3.uTriangles.push_back(ut);
+                }
+
+                queue.emplace(t1);
+                queue.emplace(t2);
+                queue.emplace(t3);
+                queue.emplace(t4);
+            }
+        }
+    }
+
+    return minMaxDisplacements;
+}
+

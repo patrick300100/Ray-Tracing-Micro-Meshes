@@ -12,6 +12,7 @@ struct TriangleData {
     int nRows; //Number of micro vertices on the base edge of the triangle
     int displacementOffset; //Offset into the displacement buffer from where displacements for this triangle starts
     Plane plane;
+    int minMaxOffset;
 };
 
 //Vertex that is coming from the C++ code
@@ -76,6 +77,7 @@ cbuffer meshData : register(b1) {
 StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<TriangleData> triangleData : register(t2);
 StructuredBuffer<float3> positions2D : register(t3); //Contains 2D position in the xy entries, and height (to displace) in the z entry
+StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarchically) min and max displacements. x component is min displacement, y component is max displacement
 
 static const float MAX_FLOAT = 3.402823466e+38f;
 
