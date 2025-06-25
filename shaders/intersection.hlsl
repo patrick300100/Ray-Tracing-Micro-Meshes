@@ -35,14 +35,11 @@ struct Edge {
 	Vertex2D start;
     Vertex2D end;
 
-    Vertex2D middle() {
-        Vertex2D v;
-        v.position = (start.position + end.position) * 0.5;
-        v.coordinates = (start.coordinates + end.coordinates) * 0.5;
-
-        return v;
+    float2 middleCoord() {
+        return (start.coordinates + end.coordinates) * 0.5;
     }
 
+    //Returns true if poit p lies on the left side of this edge, false when it is to the right or exactly on it
     bool isLeft(float2 p) {
         return !isRight(p);
     }
@@ -57,32 +54,19 @@ struct Edge {
     }
 };
 
-//Utility struct that stores an edge along with the intersection point
-struct EdgeWithT {
-    Edge e;
-    float t; //Ray paramater
-    Edge eU; //Edge from undisplaced vertices
-};
-
 struct Triangle2D {
     Vertex2D vertices[3]; //3 vertices of triangle
-};
-
-//A struct that contains 2 triangles: the triangle with displaced vertices and undisplaced vertices (in 2D)
-struct TriangleDAUD {
-    Triangle2D tDisplaced;
-    Triangle2D tUndisplaced;
 };
 
 //Utility struct to represent the array of triangles that the ray crossed (in order)
 //You can't directly return an array in HLSL from a function, so we wrap it in a struct
 struct IntersectedTriangles {
-    TriangleDAUD triangles[4]; //A maximum of 4 micro triangles can be crossed (exceptional when ray hits vertex, usually it's 3 or less)
+    Triangle2D triangles[4]; //A maximum of 4 micro triangles can be crossed (exceptional when ray hits vertex, usually it's 3 or less)
     int count; //How many triangles actually got crossed
 };
 
 struct TriangleWithT {
-    TriangleDAUD tri;
+    Triangle2D tri;
     float minT; //Ray parameter `t` where ray entered the triangle
 };
 
@@ -92,8 +76,7 @@ cbuffer meshData : register(b1) {
 
 StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<AABB> AABBs : register(t2);
-StructuredBuffer<float3> displacements : register(t3);
-StructuredBuffer<float3> positions2D : register(t4); //Contains 2D position in the xy entries, and height (to displace) in the z entry
+StructuredBuffer<float3> positions2D : register(t3); //Contains 2D position in the xy entries, and height (to displace) in the z entry
 
 static const float MAX_FLOAT = 3.402823466e+38f;
 
@@ -109,44 +92,9 @@ float2 projectTo2D(float3 p, float3 T, float3 B, float3 v0Pos) {
     return float2(dot(rel, T), dot(rel, B));
 }
 
-//Projects a vertex onto the plane defined by T and B. In essence, this function is the same as
-//the general projectTo2D function, but this function specifically returns a Vertex2D.
-// @param p: the position of the vertex to project onto the plane
-// @param T: the tangent vector
-// @param B: the bitangent vector
-// @param N: the plane normal
-// @param v0Pos: the position of vertex0 (will act as the origin of the plane)
-// @param coords: the coordinates that you want to give to the projected vertex for the triangular grid.
-// @return: a 2D vertex
-Vertex2D projectVertexTo2D(float3 p, float3 T, float3 B, float3 N, float3 v0Pos, float2 coords) {
-    float3 rel = p - v0Pos;
-
-    Vertex2D v = {float2(dot(rel, T), dot(rel, B)), dot(rel, N), coords};
-    return v;
-}
-
-//Projects a direction vector onto the plane defined by T and B
-// @param dir: the direction vector
-// @param T: the tangent vector
-// @param B: the bitangent vector
-float2 projectDirTo2D(float3 dir, float3 T, float3 B) {
-    return float2(dot(dir, T), dot(dir, B));
-}
-
 //Unprojects a 2D point back to 3D
 float3 unproject(float2 p, float h, Plane plane, float3 v0Pos) {
     return v0Pos + p.x * plane.T + p.y * plane.B + h * plane.N;
-}
-
-//Gets the displacements of a vertex from the displacement buffer.
-// @param triangular grid coordinates of the vertex
-// @param the displacement-buffer offset
-// @return: the corresponding displacement of the vertex
-float3 getDisplacement(float2 coords, int dOffset) {
-    int sum = (coords.x * (coords.x + 1)) / 2; //Sum from 1 until coords.x (closed formula of summation)
-    int index = sum + coords.y;
-
-    return displacements[dOffset + index];
 }
 
 //Gets the position of a (micro) vertex on the plane, as well as the height needed to displace it.
@@ -158,6 +106,16 @@ float3 getPlanePosition(float2 coords, int dOffset) {
     int index = sum + coords.y;
 
     return positions2D[dOffset + index];
+}
+
+//Utility function that creates a vertex from its plane position
+// @param coords: the grid coordinates of the vertex
+// @param dOffset: the offset into a buffer that gets data for this triangle (and thereby getting data for this (micro) veretx)
+Vertex2D createVertexFromPlanePosition(float2 coords, int dOffset) {
+    float3 planePosAndHeight = getPlanePosition(coords, dOffset);
+
+    Vertex2D v = {planePosAndHeight.xy, planePosAndHeight.z, coords};
+    return v;
 }
 
 bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t) {
@@ -273,13 +231,13 @@ bool isTriangleAlreadyInList(Triangle2D t, float2 midPoints[4], int count) {
 }
 
 //Given a triangle, we subdivide it one level and return the triangles that the ray crossed
-// @param tDis: the displaced triangle
-// @param tUndis: the undisplaced triangle
+// @param t: the triangle that should be tested for ray intersection
 // @param ray: the ray in 2D
+// @param dOffset: the offset into a buffer that gets data for this triangle
 // @return an array of triangles that the ray crossed in order
-IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis, Ray2D ray, int dOffset, Plane p) {
+IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset) {
     /*
-     * We have our triangle defined by vertices v0-v1-v2 and we are going to subdivide like so:
+     * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v2
 	 *      /   \
 	 *     /     \
@@ -288,33 +246,17 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
 	 *  /   \  /    \
 	 * v0----uv0----v1
      */
-	Vertex2D v0Displaced = tDis.vertices[0];
-    Vertex2D v1Displaced = tDis.vertices[1];
-    Vertex2D v2Displaced = tDis.vertices[2];
+	Vertex2D v0Displaced = t.vertices[0];
+    Vertex2D v1Displaced = t.vertices[1];
+    Vertex2D v2Displaced = t.vertices[2];
 
-    Vertex2D v0Undisplaced = tUndis.vertices[0];
-    Vertex2D v1Undisplaced = tUndis.vertices[1];
-    Vertex2D v2Undisplaced = tUndis.vertices[2];
+    Edge base0 = {v0Displaced, v1Displaced};
+    Edge base1 = {v1Displaced, v2Displaced};
+    Edge base2 = {v2Displaced, v0Displaced};
 
-    Edge base0 = {v0Undisplaced, v1Undisplaced};
-    Edge base1 = {v1Undisplaced, v2Undisplaced};
-    Edge base2 = {v2Undisplaced, v0Undisplaced};
-
-    Vertex2D uv0 = base0.middle();
-    Vertex2D uv1 = base1.middle();
-    Vertex2D uv2 = base2.middle();
-
-    float3 uv0Displacement = getDisplacement(uv0.coordinates, dOffset);
-    float3 uv1Displacement = getDisplacement(uv1.coordinates, dOffset);
-    float3 uv2Displacement = getDisplacement(uv2.coordinates, dOffset);
-
-    float2 uv0Displacement2D = projectDirTo2D(uv0Displacement, p.T, p.B);
-    float2 uv1Displacement2D = projectDirTo2D(uv1Displacement, p.T, p.B);
-    float2 uv2Displacement2D = projectDirTo2D(uv2Displacement, p.T, p.B);
-
-    Vertex2D uv0Displaced = {uv0.position + uv0Displacement2D, dot(uv0Displacement, p.N), uv0.coordinates};
-    Vertex2D uv1Displaced = {uv1.position + uv1Displacement2D, dot(uv1Displacement, p.N), uv1.coordinates};
-    Vertex2D uv2Displaced = {uv2.position + uv2Displacement2D, dot(uv2Displacement, p.N), uv2.coordinates};
+    Vertex2D uv0Displaced = createVertexFromPlanePosition(base0.middleCoord(), dOffset);
+    Vertex2D uv1Displaced = createVertexFromPlanePosition(base1.middleCoord(), dOffset);
+    Vertex2D uv2Displaced = createVertexFromPlanePosition(base2.middleCoord(), dOffset);
 
     //Perform edge-crossing tests with all 9 edges
     float t0 = MAX_FLOAT;
@@ -357,34 +299,30 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
     int tWTCounter = 0;
 
     if(intersect0 || intersect5 || intersect8) {
-        Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced}, tU = {v0Undisplaced, uv0, uv2};
+        Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced};
 
-        trianglesWithT[tWTCounter].tri.tDisplaced = tD;
-        trianglesWithT[tWTCounter].tri.tUndisplaced = tU;
+        trianglesWithT[tWTCounter].tri = tD;
         trianglesWithT[tWTCounter].minT = min(t0, min(t5, t8));
         tWTCounter++;
     }
     if(intersect1 || intersect2 || intersect6) {
-        Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced}, tU = {uv0, v1Undisplaced, uv1};
+        Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced};
 
-        trianglesWithT[tWTCounter].tri.tDisplaced = tD;
-        trianglesWithT[tWTCounter].tri.tUndisplaced = tU;
+        trianglesWithT[tWTCounter].tri = tD;
         trianglesWithT[tWTCounter].minT = min(t1, min(t2, t6));
         tWTCounter++;
     }
     if(intersect3 || intersect4 || intersect7) {
-        Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced}, tU = {uv1, v2Undisplaced, uv2};
+        Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced};
 
-        trianglesWithT[tWTCounter].tri.tDisplaced = tD;
-        trianglesWithT[tWTCounter].tri.tUndisplaced = tU;
+        trianglesWithT[tWTCounter].tri = tD;
         trianglesWithT[tWTCounter].minT = min(t3, min(t4, t7));
         tWTCounter++;
     }
     if(intersect6 || intersect7 || intersect8) {
-        Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced}, tU = {uv0, uv1, uv2};
+        Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced};
 
-        trianglesWithT[tWTCounter].tri.tDisplaced = tD;
-        trianglesWithT[tWTCounter].tri.tUndisplaced = tU;
+        trianglesWithT[tWTCounter].tri = tD;
         trianglesWithT[tWTCounter].minT = min(t6, min(t7, t8));
         tWTCounter++;
     }
@@ -396,8 +334,7 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
     sort(trianglesWithT, tWTCounter, sortedIndices);
 
     for(int i = 0; i < tWTCounter; i++) {
-        its.triangles[i].tDisplaced = trianglesWithT[sortedIndices[i]].tri.tDisplaced;
-        its.triangles[i].tUndisplaced = trianglesWithT[sortedIndices[i]].tri.tUndisplaced;
+        its.triangles[i] = trianglesWithT[sortedIndices[i]].tri;
     }
 
     /*
@@ -421,43 +358,39 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D tDis, Triangle2D tUndis,
     float2 midPoints[4];
     int mpCount = 0;
     for(mpCount = 0; mpCount < its.count; mpCount++) {
-        Triangle2D t = its.triangles[mpCount].tDisplaced;
+        Triangle2D t = its.triangles[mpCount];
         midPoints[mpCount] = (1.0f/3.0f) * t.vertices[0].position + (1.0f/3.0f) * t.vertices[1].position + (1.0f/3.0f) * t.vertices[2].position;
     }
 
     if(iwdeR[0] || iwdeR[5] || iwdeL[2]) {
-        Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced}, tU = {v0Undisplaced, uv0, uv2};
+        Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count].tDisplaced = tD;
-        	its.triangles[its.count].tUndisplaced = tU;
+            its.triangles[its.count] = tD;
         	its.count++;
         }
     }
     if(iwdeR[1] || iwdeR[2] || iwdeL[0]) {
-        Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced}, tU = {uv0, v1Undisplaced, uv1};
+        Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count].tDisplaced = tD;
-        	its.triangles[its.count].tUndisplaced = tU;
+            its.triangles[its.count] = tD;
         	its.count++;
         }
     }
     if(iwdeR[3] || iwdeR[4] || iwdeL[1]) {
-        Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced}, tU = {uv1, v2Undisplaced, uv2};
+        Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count].tDisplaced = tD;
-        	its.triangles[its.count].tUndisplaced = tU;
+            its.triangles[its.count] = tD;
         	its.count++;
         }
     }
     if(iwdeR[6] || iwdeR[7] || iwdeR[8]) {
-        Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced}, tU = {uv0, uv1, uv2};
+        Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced};
 
         if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count].tDisplaced = tD;
-        	its.triangles[its.count].tUndisplaced = tU;
+            its.triangles[its.count] = tD;
         	its.count++;
         }
     }
@@ -505,9 +438,9 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 // @param p: the plane of the triangle
 // @param v0Pos: position of vertex 0
 // @param dOffset: offset into the displacement buffer for this triangle
-void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, int dOffset) {
+void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, int dOffset) {
     struct StackElement {
-        TriangleDAUD tri;
+        Triangle2D tri;
         int level;
 	};
 
@@ -523,9 +456,9 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
         StackElement current = stack[--stackTop];
 
         if(current.level == subDivLvl) { //Base case. Raytrace micro triangles directly
-            Vertex2D v0Displaced = current.tri.tDisplaced.vertices[0];
-            Vertex2D v1Displaced = current.tri.tDisplaced.vertices[1];
-            Vertex2D v2Displaced = current.tri.tDisplaced.vertices[2];
+            Vertex2D v0Displaced = current.tri.vertices[0];
+            Vertex2D v1Displaced = current.tri.vertices[1];
+            Vertex2D v2Displaced = current.tri.vertices[2];
 
             InputVertex vs3D[3] = {
                 unproject(v0Displaced.position, v0Displaced.height, p, v0Pos),
@@ -535,12 +468,12 @@ void rayTraceMMTriangle(TriangleDAUD rootTri, Ray2D ray, Plane p, float3 v0Pos, 
 
             if(rayTraceTriangle(vs3D[0].position, vs3D[1].position, vs3D[2].position)) return; //Ray hits triangle, so we can stop searching
         } else {
-            IntersectedTriangles its = getIntersectedTriangles(current.tri.tDisplaced, current.tri.tUndisplaced, ray, dOffset, p);
+            IntersectedTriangles its = getIntersectedTriangles(current.tri, ray, dOffset);
 
             //Push intersected triangles in reverse order to maintain correct processing order (triangles should be processed in the order the ray hits them)
             //TODO switching data structure to a queue would make more sense...
             for(int i = its.count - 1; i >= 0; i--) {
-                TriangleDAUD nextTri = its.triangles[i];
+                Triangle2D nextTri = its.triangles[i];
 
                 StackElement se = { nextTri, current.level + 1 };
                 stack[stackTop++] = se;
@@ -572,9 +505,9 @@ void main() {
 
     Plane p = {T, B, N};
 
-    Vertex2D v0Proj = projectVertexTo2D(v0.position + getDisplacement(v0GridCoordinate, aabb.displacementOffset), T, B, N, v0.position, v0GridCoordinate);
-    Vertex2D v1Proj = projectVertexTo2D(v1.position + getDisplacement(v1GridCoordinate, aabb.displacementOffset), T, B, N, v0.position, v1GridCoordinate);
-    Vertex2D v2Proj = projectVertexTo2D(v2.position + getDisplacement(v2GridCoordinate, aabb.displacementOffset), T, B, N, v0.position, v2GridCoordinate);
+    Vertex2D v0Proj = createVertexFromPlanePosition(v0GridCoordinate, aabb.displacementOffset);
+    Vertex2D v1Proj = createVertexFromPlanePosition(v1GridCoordinate, aabb.displacementOffset);
+    Vertex2D v2Proj = createVertexFromPlanePosition(v2GridCoordinate, aabb.displacementOffset);
     Triangle2D t = {v0Proj, v1Proj, v2Proj};
 
     /*
@@ -590,16 +523,5 @@ void main() {
     float2 rayDir2D = normalize(projectTo2D(O_proj + D_proj, T, B, v0.position) - rayOrigin2D);
     Ray2D ray = {rayOrigin2D, rayDir2D};
 
-    /*
-     * Creation of 2D triangle where vertices are NOT displaced
- 	 */
-    Triangle2D tUndisplaced = {
-    	projectVertexTo2D(v0.position, T, B, N, v0.position, v0GridCoordinate),
-        projectVertexTo2D(v1.position, T, B, N, v0.position, v1GridCoordinate),
-        projectVertexTo2D(v2.position, T, B, N, v0.position, v2GridCoordinate)
-    };
-
-    TriangleDAUD ts = {t, tUndisplaced};
-
-	rayTraceMMTriangle(ts, ray, p, v0.position, aabb.displacementOffset);
+	rayTraceMMTriangle(t, ray, p, v0.position, aabb.displacementOffset);
 }

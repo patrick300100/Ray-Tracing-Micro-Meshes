@@ -77,7 +77,7 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 5}, {UAV, 1}, {CBV, 2}},
+               {{SRV, 4}, {UAV, 1}, {CBV, 2}},
                device
            );
 
@@ -96,12 +96,9 @@ public:
 
             std::vector<AABB> AABBs;
             AABBs.reserve(mesh[0].cpuMesh.triangles.size());
-            std::vector<glm::vec3> displacements;
             std::vector<glm::vec3> planePositions;
             for(const auto& [triangle, AABB] : std::views::zip(mesh[0].cpuMesh.triangles, mesh[0].getAABBs())) {
-                AABBs.emplace_back(glm::vec3{AABB.MinX, AABB.MinY, AABB.MinZ}, glm::vec3{AABB.MaxX, AABB.MaxY, AABB.MaxZ}, triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), displacements.size());
-
-                std::ranges::transform(triangle.uVertices, std::back_inserter(displacements), [](const uVertex& uv) { return uv.displacement; });
+                AABBs.emplace_back(glm::vec3{AABB.MinX, AABB.MinY, AABB.MinZ}, glm::vec3{AABB.MaxX, AABB.MaxY, AABB.MaxZ}, triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), planePositions.size());
 
                 //Compute plane positions of each micro vertex
                 const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
@@ -123,10 +120,6 @@ public:
             AABBBuffer = DefaultBuffer<AABB>(device, AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             AABBBuffer.upload(AABBs, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<AABB>(AABBBuffer.getBuffer());
-
-            disBuffer = DefaultBuffer<glm::vec3>(device, displacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            disBuffer.upload(displacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<glm::vec3>(disBuffer.getBuffer());
 
             planePositionsBuffer = DefaultBuffer<glm::vec3>(device, planePositions.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             planePositionsBuffer.upload(planePositions, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -350,7 +343,6 @@ private:
     UploadBuffer<glm::mat4> invViewProjBuffer;
     UploadBuffer<int> meshDataBuffer;
     DefaultBuffer<AABB> AABBBuffer;
-    DefaultBuffer<glm::vec3> disBuffer;
     DefaultBuffer<glm::vec3> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
 
