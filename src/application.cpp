@@ -39,6 +39,7 @@ struct TriangleData {
     glm::uvec3 vIndices;
     int nRows;
     int displacementOffset;
+    glm::vec3 T, B, N;
 };
 
 class Application {
@@ -96,8 +97,6 @@ public:
             tData.reserve(cpuMesh.triangles.size());
             std::vector<glm::vec3> planePositions;
             for(const auto& triangle : cpuMesh.triangles) {
-                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), planePositions.size());
-
                 //Compute plane positions of each micro vertex
                 const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
                 const auto v1 = cpuMesh.vertices[triangle.baseVertexIndices.y];
@@ -110,8 +109,9 @@ public:
                 glm::vec3 T = normalize(e1);
                 glm::vec3 B = glm::normalize(cross(N, T));
 
-                TBNPlane::Plane plane(T, B, N, v0.position);
+                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), planePositions.size(), T, B, N);
 
+                TBNPlane::Plane plane(T, B, N, v0.position);
                 std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
             }
 

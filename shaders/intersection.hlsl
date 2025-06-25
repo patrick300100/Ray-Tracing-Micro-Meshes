@@ -3,14 +3,15 @@ struct Attributes {
     float3 V; //view direction
 };
 
+struct Plane {
+    float3 T, B, N; //tangent, bitangent, and normal
+};
+
 struct TriangleData {
     uint3 vIndices;
     int nRows; //Number of micro vertices on the base edge of the triangle
     int displacementOffset; //Offset into the displacement buffer from where displacements for this triangle starts
-};
-
-struct Plane {
-    float3 T, B, N; //tangent, bitangent, and normal
+    Plane plane;
 };
 
 //Vertex that is coming from the C++ code
@@ -494,14 +495,7 @@ void main() {
     /*
 	 * Creation of 2D triangle where vertices are displaced
 	 */
-    float3 e1 = v1.position - v0.position;
-    float3 e2 = v2.position - v0.position;
-    float3 N = normalize(cross(e1, e2)); // plane normal
-
-    float3 T = normalize(e1);
-    float3 B = normalize(cross(N, T));
-
-    Plane p = {T, B, N};
+    Plane p = tData.plane;
 
     Vertex2D v0Proj = createVertexFromPlanePosition(v0GridCoordinate, tData.displacementOffset);
     Vertex2D v1Proj = createVertexFromPlanePosition(v1GridCoordinate, tData.displacementOffset);
@@ -514,11 +508,11 @@ void main() {
     float3 O = WorldRayOrigin();
     float3 D = WorldRayDirection();
 
-    float3 O_proj = O - dot(O - v0.position, N) * N;
-    float3 D_proj = normalize(D - dot(D, N) * N);
+    float3 O_proj = O - dot(O - v0.position, p.N) * p.N;
+    float3 D_proj = normalize(D - dot(D, p.N) * p.N);
 
-    float2 rayOrigin2D = projectTo2D(O_proj, T, B, v0.position);
-    float2 rayDir2D = normalize(projectTo2D(O_proj + D_proj, T, B, v0.position) - rayOrigin2D);
+    float2 rayOrigin2D = projectTo2D(O_proj, p.T, p.B, v0.position);
+    float2 rayDir2D = normalize(projectTo2D(O_proj + D_proj, p.T, p.B, v0.position) - rayOrigin2D);
     Ray2D ray = {rayOrigin2D, rayDir2D};
 
 	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset);
