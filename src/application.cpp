@@ -35,12 +35,10 @@ struct RayTraceVertex {
     glm::vec3 position;
 };
 
-struct AABB {
-    glm::vec3 minPos;
-    glm::vec3 maxPos;
+struct TriangleData {
     glm::uvec3 vIndices;
-    int nRows; //Number of micro vertices on the base edge of the triangle
-    int displacementOffset; //Offset into the displacement buffer from where displacements for this triangle starts
+    int nRows;
+    int displacementOffset;
 };
 
 class Application {
@@ -94,11 +92,11 @@ public:
 
             const auto cpuMesh = mesh[0].cpuMesh;
 
-            std::vector<AABB> AABBs;
-            AABBs.reserve(mesh[0].cpuMesh.triangles.size());
+            std::vector<TriangleData> tData;
+            tData.reserve(cpuMesh.triangles.size());
             std::vector<glm::vec3> planePositions;
-            for(const auto& [triangle, AABB] : std::views::zip(mesh[0].cpuMesh.triangles, mesh[0].getAABBs())) {
-                AABBs.emplace_back(glm::vec3{AABB.MinX, AABB.MinY, AABB.MinZ}, glm::vec3{AABB.MaxX, AABB.MaxY, AABB.MaxZ}, triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), planePositions.size());
+            for(const auto& triangle : cpuMesh.triangles) {
+                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), planePositions.size());
 
                 //Compute plane positions of each micro vertex
                 const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
@@ -117,9 +115,9 @@ public:
                 std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
             }
 
-            AABBBuffer = DefaultBuffer<AABB>(device, AABBs.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            AABBBuffer.upload(AABBs, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<AABB>(AABBBuffer.getBuffer());
+            triangleData = DefaultBuffer<TriangleData>(device, tData.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            triangleData.upload(tData, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<TriangleData>(triangleData.getBuffer());
 
             planePositionsBuffer = DefaultBuffer<glm::vec3>(device, planePositions.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             planePositionsBuffer.upload(planePositions, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -342,7 +340,7 @@ private:
     RayTraceShader rtShader, rtTriangleShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
     UploadBuffer<int> meshDataBuffer;
-    DefaultBuffer<AABB> AABBBuffer;
+    DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<glm::vec3> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
 

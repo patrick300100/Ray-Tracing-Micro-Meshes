@@ -3,9 +3,7 @@ struct Attributes {
     float3 V; //view direction
 };
 
-struct AABB {
-    float3 minPos;
-    float3 maxPos;
+struct TriangleData {
     uint3 vIndices;
     int nRows; //Number of micro vertices on the base edge of the triangle
     int displacementOffset; //Offset into the displacement buffer from where displacements for this triangle starts
@@ -75,7 +73,7 @@ cbuffer meshData : register(b1) {
 };
 
 StructuredBuffer<InputVertex> vertices : register(t1);
-StructuredBuffer<AABB> AABBs : register(t2);
+StructuredBuffer<TriangleData> triangleData : register(t2);
 StructuredBuffer<float3> positions2D : register(t3); //Contains 2D position in the xy entries, and height (to displace) in the z entry
 
 static const float MAX_FLOAT = 3.402823466e+38f;
@@ -484,14 +482,14 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, in
 
 [shader("intersection")]
 void main() {
-    AABB aabb = AABBs[PrimitiveIndex()];
+    TriangleData tData = triangleData[PrimitiveIndex()];
 
-    InputVertex v0 = vertices[aabb.vIndices.x];
-    InputVertex v1 = vertices[aabb.vIndices.y];
-    InputVertex v2 = vertices[aabb.vIndices.z];
+    InputVertex v0 = vertices[tData.vIndices.x];
+    InputVertex v1 = vertices[tData.vIndices.y];
+    InputVertex v2 = vertices[tData.vIndices.z];
     float2 v0GridCoordinate = float2(0,0);
-    float2 v1GridCoordinate = float2(aabb.nRows - 1, 0);
-    float2 v2GridCoordinate = float2(aabb.nRows - 1, aabb.nRows - 1);
+    float2 v1GridCoordinate = float2(tData.nRows - 1, 0);
+    float2 v2GridCoordinate = float2(tData.nRows - 1, tData.nRows - 1);
 
     /*
 	 * Creation of 2D triangle where vertices are displaced
@@ -505,9 +503,9 @@ void main() {
 
     Plane p = {T, B, N};
 
-    Vertex2D v0Proj = createVertexFromPlanePosition(v0GridCoordinate, aabb.displacementOffset);
-    Vertex2D v1Proj = createVertexFromPlanePosition(v1GridCoordinate, aabb.displacementOffset);
-    Vertex2D v2Proj = createVertexFromPlanePosition(v2GridCoordinate, aabb.displacementOffset);
+    Vertex2D v0Proj = createVertexFromPlanePosition(v0GridCoordinate, tData.displacementOffset);
+    Vertex2D v1Proj = createVertexFromPlanePosition(v1GridCoordinate, tData.displacementOffset);
+    Vertex2D v2Proj = createVertexFromPlanePosition(v2GridCoordinate, tData.displacementOffset);
     Triangle2D t = {v0Proj, v1Proj, v2Proj};
 
     /*
@@ -523,5 +521,5 @@ void main() {
     float2 rayDir2D = normalize(projectTo2D(O_proj + D_proj, T, B, v0.position) - rayOrigin2D);
     Ray2D ray = {rayOrigin2D, rayDir2D};
 
-	rayTraceMMTriangle(t, ray, p, v0.position, aabb.displacementOffset);
+	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset);
 }
