@@ -208,7 +208,7 @@ void checkNeighbourTriangles(Edge e, int dOffset, Ray2D ray, out bool intersectL
         int increment = endCoord.x - startCoord.x;
 
         for(int i = 1; i < increment; i++) {
-            float2 planePos = getPlanePosition(float2(startCoord.x + i, startCoord.y + 1), dOffset).xy;
+            float2 planePos = getPlanePosition(float2(startCoord.x + i, startCoord.y + i), dOffset).xy;
             bool separates = raySeparatesPointAndEdge(e, ray, planePos);
 
             if(separates && e.isRight(planePos)) intersectR = true;
