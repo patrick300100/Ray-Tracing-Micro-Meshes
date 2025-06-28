@@ -247,3 +247,130 @@ std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) cons
     return minMaxDisplacements;
 }
 
+glm::vec3 getPlanePosition(glm::vec2 coords, int dOffset, const std::vector<glm::vec3>& positions2D) {
+    int sum = (coords.x * (coords.x + 1)) / 2; //Sum from 1 until coords.x (closed formula of summation)
+    int index = sum + coords.y;
+
+    return positions2D[dOffset + index];
+}
+
+struct Edge2D {
+    glm::vec2 start;
+    glm::vec2 end;
+
+    [[nodiscard]] bool isRight(const glm::vec2& p) const {
+        glm::vec2 SE = end - start;
+        glm::vec2 SP = p - start;
+        float cross = SE.x * SP.y - SE.y * SP.x;
+
+        return cross <= 0;
+    }
+};
+
+float distPointToEdge(const glm::vec2& p, const Edge2D& e) {
+    const glm::vec2 a = e.start;
+    const glm::vec2 b = e.end;
+
+    const glm::vec2 ab = b - a;
+    const glm::vec2 ap = p - a;
+
+    float abLengthSquared = glm::dot(ab, ab);
+
+    float t = glm::dot(ap, ab) / abLengthSquared;
+    t = std::clamp(t, 0.0f, 1.0f);
+
+    glm::vec2 closest = a + t * ab;
+    return glm::length(p - closest);
+}
+
+struct Line {
+    double a, b; //Linear line y = ax + b
+
+    //Returns the intersection point of this line with another line
+    [[nodiscard]] glm::vec2 intersect(const Line& other) const {
+        double x = (other.b - b) / (a - other.a);
+        double y = a * x + b;
+        return {x, y};
+    }
+};
+
+//Computes a line through p0 and p1, and then translates the line to go through p2 (i.e., same slope as the line from p0 to p1)
+Line computeTranslatedLine(const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2) {
+    double dx = p1.x - p0.x;
+    double dy = p1.y - p0.y;
+    double a = dy / dx;
+
+    double b = p2.y - a * p2.x;
+
+    return {a, b};
+}
+
+std::vector<glm::vec2> Mesh::boundingVertices(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
+    std::vector<glm::vec2> outerCornerVertices;
+
+    for(const auto& [t, dOffset] : std::views::zip(triangles, dOffsets)) {
+        const auto nRows = numberOfVerticesOnEdge();
+
+        //Get vertices
+        const auto v0Temp = getPlanePosition(glm::vec2{0,0}, dOffset, positions2D);
+        const auto v1Temp = getPlanePosition(glm::vec2{nRows - 1,0}, dOffset, positions2D);
+        const auto v2Temp = getPlanePosition(glm::vec2{nRows - 1,nRows - 1}, dOffset, positions2D);
+
+        const glm::vec2 v0 = {v0Temp.x, v0Temp.y};
+        const glm::vec2 v1 = {v1Temp.x, v1Temp.y};
+        const glm::vec2 v2 = {v2Temp.x, v2Temp.y};
+
+        //Get most outer vertex per edge
+        glm::vec2 v0v1Outer = v0;
+        float v0v1Distance = 0.0f;
+        for(int i = 1; i < nRows - 1; i++) {
+            Edge2D e(v0, v1);
+            const auto temp = getPlanePosition(glm::vec2{i, 0}, dOffset, positions2D);
+            glm::vec2 planePos = {temp.x, temp.y};
+            float dist = distPointToEdge(planePos, e);
+
+            if(e.isRight(planePos) && dist > v0v1Distance) {
+                v0v1Distance = dist;
+                v0v1Outer = planePos;
+            }
+        }
+
+        glm::vec2 v1v2Outer = v1;
+        float v1v2Distance = 0.0f;
+        for(int i = 1; i < nRows - 1; i++) {
+            Edge2D e(v1, v2);
+            const auto temp = getPlanePosition(glm::vec2{nRows - 1, i}, dOffset, positions2D);
+            glm::vec2 planePos = {temp.x, temp.y};
+            float dist = distPointToEdge(planePos, e);
+
+            if(e.isRight(planePos) && dist > v1v2Distance) {
+                v1v2Distance = dist;
+                v1v2Outer = planePos;
+            }
+        }
+
+        glm::vec2 v2v0Outer = v2;
+        float v2v0Distance = 0.0f;
+        for(int i = 1; i < nRows - 1; i++) {
+            Edge2D e(v2, v0);
+            const auto temp = getPlanePosition(glm::vec2(i, i), dOffset, positions2D);
+            glm::vec2 planePos = {temp.x, temp.y};
+            float dist = distPointToEdge(planePos, e);
+
+            if(e.isRight(planePos) && dist > v2v0Distance) {
+                v2v0Distance = dist;
+                v2v0Outer = planePos;
+            }
+        }
+
+        const auto lv0v1 = computeTranslatedLine(v0, v1, v0v1Outer);
+        const auto lv1v2 = computeTranslatedLine(v1, v2, v1v2Outer);
+        const auto lv0v2 = computeTranslatedLine(v0, v2, v2v0Outer);
+
+        outerCornerVertices.push_back(lv0v1.intersect(lv0v2));
+        outerCornerVertices.push_back(lv0v1.intersect(lv1v2));
+        outerCornerVertices.push_back(lv0v2.intersect(lv1v2));
+    }
+
+    return outerCornerVertices;
+}

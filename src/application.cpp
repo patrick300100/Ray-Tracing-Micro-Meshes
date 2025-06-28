@@ -77,7 +77,7 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 5}, {UAV, 1}, {CBV, 2}},
+               {{SRV, 6}, {UAV, 1}, {CBV, 2}},
                device
            );
 
@@ -135,6 +135,14 @@ public:
             minMaxDisplacementBuffer = DefaultBuffer<glm::vec2>(device, minMaxDisplacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             minMaxDisplacementBuffer.upload(minMaxDisplacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<glm::vec2>(minMaxDisplacementBuffer.getBuffer());
+
+            std::vector<int> allOffsets;
+            std::ranges::transform(tData, std::back_inserter(allOffsets), [&](const TriangleData& td) { return td.displacementOffset; });
+            const auto newCorners = cpuMesh.boundingVertices(planePositions, allOffsets);
+
+            prismCornersBuffer = DefaultBuffer<glm::vec2>(device, newCorners.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            prismCornersBuffer.upload(newCorners, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<glm::vec2>(prismCornersBuffer.getBuffer());
 
 
             //Creating output texture
@@ -357,6 +365,7 @@ private:
     DefaultBuffer<glm::vec3> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
+    DefaultBuffer<glm::vec2> prismCornersBuffer;
 
     void menu() {
         ImGui::Begin("Window");

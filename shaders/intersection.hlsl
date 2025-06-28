@@ -29,6 +29,26 @@ struct Vertex2D {
 struct Ray2D {
     float2 origin;
     float2 direction;
+
+    float2 on(float t) {
+        return origin + t * direction;
+    }
+
+    //Computes the height from a point on this ray to its corresponding point on the 3D ray
+    float heightTo3DRay(float t2d, Plane p, float3 v0) {
+        float3 D = WorldRayDirection();
+
+        float3 D_plane = D - dot(D, p.N) * p.N;
+        float lenPlane = length(D_plane);
+        float t3 = t2d / lenPlane;
+
+        float3 P3D = WorldRayOrigin() + t3 * D;
+
+        float2 hit2D = on(t2d);
+        float3 P_plane = v0 + hit2D.x * p.T + hit2D.y * p.B;
+
+        return dot(P3D - P_plane, p.N);
+    }
 };
 
 struct Edge {
@@ -78,8 +98,10 @@ StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<TriangleData> triangleData : register(t2);
 StructuredBuffer<float3> positions2D : register(t3); //Contains 2D position in the xy entries, and height (to displace) in the z entry
 StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarchically) min and max displacements. x component is min displacement, y component is max displacement
+StructuredBuffer<float2> prismPlaneCorners : register(t5);
 
 static const float MAX_FLOAT = 3.402823466e+38f;
+static const float MAX_T = 100000.0f; //Should coincide (or be higher) with the ray.TMax in ray generation
 
 //Projects a position onto the plane defined by T and B
 // @param p: the position to project onto the plane
@@ -187,6 +209,8 @@ bool raySeparatesPointAndEdge(Edge e, Ray2D ray, float2 p) {
 void checkNeighbourTriangles(Edge e, int dOffset, Ray2D ray, out bool intersectL, out bool intersectR) {
     int2 startCoord = min(e.start.coordinates, e.end.coordinates);
     int2 endCoord = max(e.start.coordinates, e.end.coordinates);
+
+    intersectL = false, intersectR = false;
 
     if(startCoord.x == endCoord.x) {
         for(int i = startCoord.y + 1; i < endCoord.y; i++) {
@@ -359,8 +383,8 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffse
     float2 midPoints[4];
     int mpCount = 0;
     for(mpCount = 0; mpCount < its.count; mpCount++) {
-        Triangle2D t = its.triangles[mpCount];
-        midPoints[mpCount] = (1.0f/3.0f) * t.vertices[0].position + (1.0f/3.0f) * t.vertices[1].position + (1.0f/3.0f) * t.vertices[2].position;
+        Triangle2D tr = its.triangles[mpCount];
+        midPoints[mpCount] = (1.0f/3.0f) * tr.vertices[0].position + (1.0f/3.0f) * tr.vertices[1].position + (1.0f/3.0f) * tr.vertices[2].position;
     }
 
     if(iwdeR[0] || iwdeR[5] || iwdeL[2]) {
@@ -410,7 +434,7 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 
     float3 pvec = cross(dir, edge2);
     float det = dot(edge1, pvec);
-    if(abs(det) < 1e-8) return false;
+    if(abs(det) < 1e-8f) return false;
 
     float invDet = 1.0 / det;
     float3 tvec = origin - v0;
@@ -494,6 +518,10 @@ void main() {
     float2 v1GridCoordinate = float2(tData.nRows - 1, 0);
     float2 v2GridCoordinate = float2(tData.nRows - 1, tData.nRows - 1);
 
+    Vertex2D prismCornerV0 = {prismPlaneCorners[PrimitiveIndex() * 3], 0, v0GridCoordinate};
+    Vertex2D prismCornerV1 = {prismPlaneCorners[(PrimitiveIndex() * 3) + 1], 0, v1GridCoordinate};
+    Vertex2D prismCornerV2 = {prismPlaneCorners[(PrimitiveIndex() * 3) + 2], 0, v2GridCoordinate};
+
     /*
 	 * Creation of 2D triangle where vertices are displaced
 	 */
@@ -516,6 +544,40 @@ void main() {
     float2 rayOrigin2D = projectTo2D(O_proj, p.T, p.B, v0.position);
     float2 rayDir2D = normalize(projectTo2D(O_proj + D_proj, p.T, p.B, v0.position) - rayOrigin2D);
     Ray2D ray = {rayOrigin2D, rayDir2D};
+
+    /*
+     * Early opt-out
+     */
+    struct EdgeHitInfo {
+        Edge e;
+        float rayT;
+        bool intersect;
+    };
+
+    EdgeHitInfo baseEdges[3] = {
+        {{prismCornerV0, prismCornerV1}, -1, false},
+        {{prismCornerV1, prismCornerV2}, -1, false},
+        {{prismCornerV2, prismCornerV0}, -1, false}
+    };
+
+    [unroll] for(int i = 0; i < 3; i++) {
+        EdgeHitInfo be = baseEdges[i];
+
+        baseEdges[i].intersect = rayIntersectsEdge(ray, be.e, baseEdges[i].rayT);
+    }
+
+    if(!baseEdges[0].intersect && !baseEdges[1].intersect && !baseEdges[2].intersect) return;
+
+    float entryT = min(baseEdges[0].rayT < 0 ? MAX_T : baseEdges[0].rayT, min(baseEdges[1].rayT < 0 ? MAX_T : baseEdges[1].rayT, baseEdges[2].rayT < 0 ? MAX_T : baseEdges[2].rayT));
+    float exitT = max(baseEdges[0].rayT, max(baseEdges[1].rayT, baseEdges[2].rayT));
+
+    if(abs(entryT - exitT) < 0.0001f) entryT = 0; //If ray origin is inside triangle
+
+    float heightEntry = ray.heightTo3DRay(entryT, p, v0.position);
+    float exitEntry = ray.heightTo3DRay(exitT, p, v0.position);
+
+    float2 minMaxDispl = minMaxDisplacements[tData.minMaxOffset];
+    if((heightEntry < minMaxDispl.x && exitEntry < minMaxDispl.x) || (heightEntry > minMaxDispl.y && exitEntry > minMaxDispl.y)) return;
 
 	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset);
 }
