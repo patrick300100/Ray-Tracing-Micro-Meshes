@@ -1,0 +1,35 @@
+#pragma once
+#include <glm/glm.hpp>
+
+struct Vertex2D {
+    glm::vec2 position;
+    glm::uvec2 coordinates;
+};
+
+struct Edge2D {
+    Vertex2D start;
+    Vertex2D end;
+
+    [[nodiscard]] bool isRight(const glm::vec2& p) const {
+        glm::vec2 SE = end.position - start.position;
+        glm::vec2 SP = p - start.position;
+        float cross = SE.x * SP.y - SE.y * SP.x;
+
+        return cross <= 0;
+    }
+
+    [[nodiscard]] Vertex2D middle() const {
+        glm::vec2 middlePos = (start.position + end.position) / 2.0f;
+        glm::uvec2 middleCoords = (start.coordinates + end.coordinates) / 2u;
+
+        return {middlePos, middleCoords};
+    }
+};
+
+struct Triangle2D {
+    Vertex2D v0, v1, v2;
+};
+
+struct Triangle2DOnlyPos {
+    glm::vec2 v0, v1, v2;
+};

@@ -254,22 +254,9 @@ glm::vec3 getPlanePosition(glm::vec2 coords, int dOffset, const std::vector<glm:
     return positions2D[dOffset + index];
 }
 
-struct Edge2D {
-    glm::vec2 start;
-    glm::vec2 end;
-
-    [[nodiscard]] bool isRight(const glm::vec2& p) const {
-        glm::vec2 SE = end - start;
-        glm::vec2 SP = p - start;
-        float cross = SE.x * SP.y - SE.y * SP.x;
-
-        return cross <= 0;
-    }
-};
-
 float distPointToEdge(const glm::vec2& p, const Edge2D& e) {
-    const glm::vec2 a = e.start;
-    const glm::vec2 b = e.end;
+    const glm::vec2 a = e.start.position;
+    const glm::vec2 b = e.end.position;
 
     const glm::vec2 ab = b - a;
     const glm::vec2 ap = p - a;
@@ -305,72 +292,128 @@ Line computeTranslatedLine(const glm::vec2& p0, const glm::vec2& p1, const glm::
     return {a, b};
 }
 
-std::vector<glm::vec2> Mesh::boundingVertices(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
-    std::vector<glm::vec2> outerCornerVertices;
+Triangle2DOnlyPos bindVerticesForTriangle(const Triangle2D& t, int dOffset, const std::vector<glm::vec3>& positions2D) {
+    const auto v0 = t.v0;
+    const auto v1 = t.v1;
+    const auto v2 = t.v2;
 
+    std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
+    std::vector vertices{v0, v1, v2};
+    for(int i = 0; i < 3; i++) {
+        const auto& e = edges[i];
+        int incrementX = 0, incrementY = 0;
+        float maxDistance = 0.0f;
+
+        glm::uvec2 startCoord = min(e.start.coordinates, e.end.coordinates);
+        glm::uvec2 endCoord = max(e.start.coordinates, e.end.coordinates);
+
+        if(startCoord.x == endCoord.x) incrementY = 1;
+        else if(startCoord.y == endCoord.y) incrementX = 1;
+        else {
+            incrementX = 1;
+            incrementY = 1;
+        }
+
+        startCoord = {startCoord.x + incrementX, startCoord.y + incrementY};
+
+        while(startCoord != endCoord) {
+            const auto temp = getPlanePosition(startCoord, dOffset, positions2D);
+            Vertex2D planePos = {{temp.x, temp.y}, startCoord};
+            float dist = distPointToEdge(planePos.position, e);
+
+            if(e.isRight(planePos.position) && dist > maxDistance) {
+                maxDistance = dist;
+                vertices[i] = planePos;
+            }
+
+            startCoord = {startCoord.x + incrementX, startCoord.y + incrementY};
+        }
+    }
+
+    const auto lv0v1 = computeTranslatedLine(v0.position, v1.position, vertices[0].position);
+    const auto lv1v2 = computeTranslatedLine(v1.position, v2.position, vertices[1].position);
+    const auto lv0v2 = computeTranslatedLine(v0.position, v2.position, vertices[2].position);
+
+    return{lv0v1.intersect(lv0v2), lv0v1.intersect(lv1v2), lv0v2.intersect(lv1v2)};
+}
+
+std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
+    std::vector<Triangle2DOnlyPos> boundTriangles;
+
+    struct TriangleElement {
+        std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
+        glm::vec3 v0, v1, v2; //Corner vertices, not displaced
+        Triangle2D t2D;
+    };
+
+    int counter = 0;
     for(const auto& [t, dOffset] : std::views::zip(triangles, dOffsets)) {
         const auto nRows = numberOfVerticesOnEdge();
 
-        //Get vertices
-        const auto v0Temp = getPlanePosition(glm::vec2{0,0}, dOffset, positions2D);
-        const auto v1Temp = getPlanePosition(glm::vec2{nRows - 1,0}, dOffset, positions2D);
-        const auto v2Temp = getPlanePosition(glm::vec2{nRows - 1,nRows - 1}, dOffset, positions2D);
+        const auto v0 = vertices[t.baseVertexIndices.x];
+        const auto v1 = vertices[t.baseVertexIndices.y];
+        const auto v2 = vertices[t.baseVertexIndices.z];
 
-        const glm::vec2 v0 = {v0Temp.x, v0Temp.y};
-        const glm::vec2 v1 = {v1Temp.x, v1Temp.y};
-        const glm::vec2 v2 = {v2Temp.x, v2Temp.y};
+        const Vertex2D v02D(getPlanePosition(glm::vec2{0,0}, dOffset, positions2D), {0, 0});
+        const Vertex2D v12D(getPlanePosition(glm::vec2{nRows - 1,0}, dOffset, positions2D), {nRows - 1,0});
+        const Vertex2D v22D(getPlanePosition(glm::vec2{nRows - 1,nRows - 1}, dOffset, positions2D), {nRows - 1,nRows - 1});
+        Triangle2D tr2D(v02D, v12D, v22D);
 
-        //Get most outer vertex per edge
-        glm::vec2 v0v1Outer = v0;
-        float v0v1Distance = 0.0f;
-        for(int i = 1; i < nRows - 1; i++) {
-            Edge2D e(v0, v1);
-            const auto temp = getPlanePosition(glm::vec2{i, 0}, dOffset, positions2D);
-            glm::vec2 planePos = {temp.x, temp.y};
-            float dist = distPointToEdge(planePos, e);
+        //Set up the queue
+        std::queue<TriangleElement> queue;
+        queue.emplace(t.uFaces, v0.position, v1.position, v2.position, tr2D);
 
-            if(e.isRight(planePos) && dist > v0v1Distance) {
-                v0v1Distance = dist;
-                v0v1Outer = planePos;
+        while(!queue.empty()) {
+            const auto currentTriangle = queue.front();
+            queue.pop();
+
+            //Compute bound triangle
+            const auto boundVs = bindVerticesForTriangle(currentTriangle.t2D, dOffset, positions2D);
+            boundTriangles.emplace_back(boundVs.v0, boundVs.v1, boundVs.v2);
+
+            //Add next elements to queue
+            if(currentTriangle.uTriangles.size() != 1) {
+                //Now we compute the next 4 triangles for processing
+                glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
+                glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
+                glm::vec3 v1v2 = (currentTriangle.v1 + currentTriangle.v2) / 2.0f;
+
+                Edge2D e12D(currentTriangle.t2D.v0, currentTriangle.t2D.v1);
+                Edge2D e22D(currentTriangle.t2D.v1, currentTriangle.t2D.v2);
+                Edge2D e32D(currentTriangle.t2D.v2, currentTriangle.t2D.v0);
+
+                const auto e1Middle = e12D.middle();
+                const auto e2Middle = e22D.middle();
+                const auto e3Middle = e32D.middle();
+
+                Vertex2D v0v12D(getPlanePosition(e1Middle.coordinates, dOffset, positions2D), e1Middle.coordinates);
+                Vertex2D v1v22D(getPlanePosition(e2Middle.coordinates, dOffset, positions2D), e2Middle.coordinates);
+                Vertex2D v2v02D(getPlanePosition(e3Middle.coordinates, dOffset, positions2D), e3Middle.coordinates);
+
+                TriangleElement t1{.v0 = currentTriangle.v0, .v1 = v0v1, .v2 = v0v2, .t2D = {currentTriangle.t2D.v0, v0v12D, v2v02D}}; //Triangle near v0
+                TriangleElement t2{.v0 = v0v1, .v1 = currentTriangle.v1, .v2 = v1v2, .t2D = {v0v12D, currentTriangle.t2D.v1, v1v22D}}; //Triangle near v1
+                TriangleElement t3{.v0 = v0v1, .v1 = v1v2, .v2 = v0v2, .t2D = {v0v12D, v1v22D, v2v02D}}; //Center triangle
+                TriangleElement t4{.v0 = v0v2, .v1 = v1v2, .v2 = currentTriangle.v2, .t2D = {v2v02D, v1v22D, currentTriangle.t2D.v2}}; //Triangle near v2
+
+                for(const auto& ut : currentTriangle.uTriangles) {
+                    glm::vec3 midPoint = (1.0f/3.0f) * t.uVertices[ut[0]].position + (1.0f/3.0f) * t.uVertices[ut[1]].position + (1.0f/3.0f) * t.uVertices[ut[2]].position;
+                    glm::vec3 bc = Triangle::computeBaryCoords(currentTriangle.v0, currentTriangle.v1, currentTriangle.v2, midPoint);
+
+                    if(bc.x > 0.5) t1.uTriangles.push_back(ut);
+                    else if(bc.y > 0.5) t2.uTriangles.push_back(ut);
+                    else if(bc.z > 0.5) t4.uTriangles.push_back(ut);
+                    else t3.uTriangles.push_back(ut);
+                }
+
+                queue.emplace(t1);
+                queue.emplace(t2);
+                queue.emplace(t3);
+                queue.emplace(t4);
             }
         }
 
-        glm::vec2 v1v2Outer = v1;
-        float v1v2Distance = 0.0f;
-        for(int i = 1; i < nRows - 1; i++) {
-            Edge2D e(v1, v2);
-            const auto temp = getPlanePosition(glm::vec2{nRows - 1, i}, dOffset, positions2D);
-            glm::vec2 planePos = {temp.x, temp.y};
-            float dist = distPointToEdge(planePos, e);
-
-            if(e.isRight(planePos) && dist > v1v2Distance) {
-                v1v2Distance = dist;
-                v1v2Outer = planePos;
-            }
-        }
-
-        glm::vec2 v2v0Outer = v2;
-        float v2v0Distance = 0.0f;
-        for(int i = 1; i < nRows - 1; i++) {
-            Edge2D e(v2, v0);
-            const auto temp = getPlanePosition(glm::vec2(i, i), dOffset, positions2D);
-            glm::vec2 planePos = {temp.x, temp.y};
-            float dist = distPointToEdge(planePos, e);
-
-            if(e.isRight(planePos) && dist > v2v0Distance) {
-                v2v0Distance = dist;
-                v2v0Outer = planePos;
-            }
-        }
-
-        const auto lv0v1 = computeTranslatedLine(v0, v1, v0v1Outer);
-        const auto lv1v2 = computeTranslatedLine(v1, v2, v1v2Outer);
-        const auto lv0v2 = computeTranslatedLine(v0, v2, v2v0Outer);
-
-        outerCornerVertices.push_back(lv0v1.intersect(lv0v2));
-        outerCornerVertices.push_back(lv0v1.intersect(lv1v2));
-        outerCornerVertices.push_back(lv0v2.intersect(lv1v2));
+        counter++;
     }
 
-    return outerCornerVertices;
+    return boundTriangles;
 }

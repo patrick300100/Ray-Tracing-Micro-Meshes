@@ -140,9 +140,9 @@ public:
             std::ranges::transform(tData, std::back_inserter(allOffsets), [&](const TriangleData& td) { return td.displacementOffset; });
             const auto newCorners = cpuMesh.boundingVertices(planePositions, allOffsets);
 
-            prismCornersBuffer = DefaultBuffer<glm::vec2>(device, newCorners.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            prismCornersBuffer = DefaultBuffer<Triangle2DOnlyPos>(device, newCorners.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             prismCornersBuffer.upload(newCorners, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<glm::vec2>(prismCornersBuffer.getBuffer());
+            rtShader.createSRV<Triangle2DOnlyPos>(prismCornersBuffer.getBuffer());
 
 
             //Creating output texture
@@ -365,7 +365,7 @@ private:
     DefaultBuffer<glm::vec3> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
-    DefaultBuffer<glm::vec2> prismCornersBuffer;
+    DefaultBuffer<Triangle2DOnlyPos> prismCornersBuffer;
 
     void menu() {
         ImGui::Begin("Window");

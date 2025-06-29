@@ -76,6 +76,14 @@ struct Edge {
 
 struct Triangle2D {
     Vertex2D vertices[3]; //3 vertices of triangle
+
+    //Path into hierarchical subdivision. Entries can only be 0, 1, 2, and 3.
+    //0 means that it entered the triangle close to v0
+    //1 means that it entered the triangle close to v1
+    //2 means it entered the center triangle
+    //3 means it entered the triangle close to v2
+    int path[5];
+    int pathCount;
 };
 
 //Utility struct to represent the array of triangles that the ray crossed (in order)
@@ -98,7 +106,7 @@ StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<TriangleData> triangleData : register(t2);
 StructuredBuffer<float3> positions2D : register(t3); //Contains 2D position in the xy entries, and height (to displace) in the z entry
 StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarchically) min and max displacements. x component is min displacement, y component is max displacement
-StructuredBuffer<float2> prismPlaneCorners : register(t5);
+StructuredBuffer<float2[3]> prismPlaneCorners : register(t5);
 
 static const float MAX_FLOAT = 3.402823466e+38f;
 static const float MAX_T = 100000.0f; //Should coincide (or be higher) with the ray.TMax in ray generation
@@ -199,60 +207,25 @@ bool raySeparatesPointAndEdge(Edge e, Ray2D ray, float2 p) {
     return abs(oP) < 1e-4f || (oP * oA < 0) || (oP * oB < 0);
 }
 
-//Given an edge, at most 2 triangles are touching it. On the edge, there will be micro vertices in subsequent subdisivion levels (called diverted vertices in this subdivision level).
-//These diverted vertices may alter the triangle region in future subdivision levels.
-//We check whether a ray hits a triangle in possible future subdivision levels by getting all vertices (of future subdivision levels) on the edge, and check whether the ray hits the neighbouring triangles
-// @param e: the edge
-// @param dOffset: the offset into the planePositions2D buffer
-// @param ray: the ray
-// @return two boolean variables, one whether the triangle on the left side of the edge was hit, and one for the right side
-void checkNeighbourTriangles(Edge e, int dOffset, Ray2D ray, out bool intersectL, out bool intersectR) {
-    int2 startCoord = min(e.start.coordinates, e.end.coordinates);
-    int2 endCoord = max(e.start.coordinates, e.end.coordinates);
+//Checks if a ray intersects a triangle
+// @param vertices: the vertex positions of the triangle
+// @param ray: the ray in 2D
+// @param ts: an array of t's (one for each edge) that will hold the ray parameter t in case the ray hits the edge
+// @return true if the triangle was hit, false if not. It will also return the intersection point in terms of the ray parameter `t` for each edge that was hit
+bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float ts[3]) {
+    Vertex2D v0 = {vertices[0], 0, float2(-1, -1)};
+    Vertex2D v1 = {vertices[1], 0, float2(-1, -1)};
+    Vertex2D v2 = {vertices[2], 0, float2(-1, -1)};
 
-    intersectL = false, intersectR = false;
+    Edge v0v1 = {v0, v1};
+    Edge v1v2 = {v1, v2};
+    Edge v2v0 = {v2, v0};
 
-    if(startCoord.x == endCoord.x) {
-        for(int i = startCoord.y + 1; i < endCoord.y; i++) {
-            float2 planePos = getPlanePosition(float2(startCoord.x, i), dOffset).xy;
-            bool separates = raySeparatesPointAndEdge(e, ray, planePos);
+    bool intersect1 = rayIntersectsEdge(ray, v0v1, ts[0]);
+    bool intersect2 = rayIntersectsEdge(ray, v1v2, ts[1]);
+    bool intersect3 = rayIntersectsEdge(ray, v2v0, ts[2]);
 
-            if(separates && e.isRight(planePos)) intersectR = true;
-            else if(separates && e.isLeft(planePos)) intersectL = true;
-        }
-    } else if(startCoord.y == endCoord.y) {
-        for(int i = startCoord.x + 1; i < endCoord.x; i++) {
-            float2 planePos = getPlanePosition(float2(i, startCoord.y), dOffset).xy;
-            bool separates = raySeparatesPointAndEdge(e, ray, planePos);
-
-            if(separates && e.isRight(planePos)) intersectR = true;
-            else if(separates && e.isLeft(planePos)) intersectL = true;
-        }
-    } else {
-        int increment = endCoord.x - startCoord.x;
-
-        for(int i = 1; i < increment; i++) {
-            float2 planePos = getPlanePosition(float2(startCoord.x + i, startCoord.y + i), dOffset).xy;
-            bool separates = raySeparatesPointAndEdge(e, ray, planePos);
-
-            if(separates && e.isRight(planePos)) intersectR = true;
-            else if(separates && e.isLeft(planePos)) intersectL = true;
-        }
-    }
-}
-
-bool approximatelyEqual(float2 a, float2 b) {
-    return all(abs(a - b) < 1e-4f);
-}
-
-bool isTriangleAlreadyInList(Triangle2D t, float2 midPoints[4], int count) {
-    float2 midPoint = (1.0f/3.0f) * t.vertices[0].position + (1.0f/3.0f) * t.vertices[1].position + (1.0f/3.0f) * t.vertices[2].position;
-
-    for(int i = 0; i < count; i++) {
-        if(approximatelyEqual(midPoint, midPoints[i])) return true;
-    }
-
-    return false;
+    return intersect1 || intersect2 || intersect3;
 }
 
 //Given a triangle, we subdivide it one level and return the triangles that the ray crossed
@@ -260,7 +233,7 @@ bool isTriangleAlreadyInList(Triangle2D t, float2 midPoints[4], int count) {
 // @param ray: the ray in 2D
 // @param dOffset: the offset into a buffer that gets data for this triangle
 // @return an array of triangles that the ray crossed in order
-IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset) {
+IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level) {
     /*
      * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v2
@@ -283,72 +256,65 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffse
     Vertex2D uv1Displaced = createVertexFromPlanePosition(base1.middleCoord(), dOffset);
     Vertex2D uv2Displaced = createVertexFromPlanePosition(base2.middleCoord(), dOffset);
 
-    //Perform edge-crossing tests with all 9 edges
-    float t0 = MAX_FLOAT;
-    Edge e0Displaced = {v0Displaced, uv0Displaced};
-    bool intersect0 = rayIntersectsEdge(ray, e0Displaced, t0);
+    int fourPower = 1U << (2 * (level + 1)); //This computes 4^(level+1)
+    int firstLocalIndexNxtLvl = (fourPower - 1) / 3;
 
-    float t1 = MAX_FLOAT;
-    Edge e1Displaced = {uv0Displaced, v1Displaced};
-    bool intersect1 = rayIntersectsEdge(ray, e1Displaced, t1);
+    int finalStartIndex = firstLocalIndexNxtLvl;
+    int lvl = level;
+    for(int i = 0; i < t.pathCount; i++) {
+        int p = t.path[i];
+        int unit = 1U << (2 * lvl);
 
-    float t2 = MAX_FLOAT;
-    Edge e2Displaced = {v1Displaced, uv1Displaced};
-    bool intersect2 = rayIntersectsEdge(ray, e2Displaced, t2);
+        finalStartIndex += p * unit;
 
-    float t3 = MAX_FLOAT;
-    Edge e3Displaced = {uv1Displaced, v2Displaced};
-    bool intersect3 = rayIntersectsEdge(ray, e3Displaced, t3);
+        lvl--;
+    }
 
-    float t4 = MAX_FLOAT;
-    Edge e4Displaced = {v2Displaced, uv2Displaced};
-    bool intersect4 = rayIntersectsEdge(ray, e4Displaced, t4);
-
-    float t5 = MAX_FLOAT;
-    Edge e5Displaced = {uv2Displaced, v0Displaced};
-    bool intersect5 = rayIntersectsEdge(ray, e5Displaced, t5);
-
-    float t6 = MAX_FLOAT;
-    Edge e6Displaced = {uv0Displaced, uv1Displaced};
-    bool intersect6 = rayIntersectsEdge(ray, e6Displaced, t6);
-
-    float t7 = MAX_FLOAT;
-    Edge e7Displaced = {uv1Displaced, uv2Displaced};
-    bool intersect7 = rayIntersectsEdge(ray, e7Displaced, t7);
-
-    float t8 = MAX_FLOAT;
-    Edge e8Displaced = {uv2Displaced, uv0Displaced};
-    bool intersect8 = rayIntersectsEdge(ray, e8Displaced, t8);
+    int indxV0 = minMaxOffset + finalStartIndex;
+    int indxV1 = minMaxOffset + finalStartIndex + 1;
+    int indxV2 = minMaxOffset + finalStartIndex + 3;
+    int indxCenter = minMaxOffset + finalStartIndex + 2;
 
     TriangleWithT trianglesWithT[4];
     int tWTCounter = 0;
 
-    if(intersect0 || intersect5 || intersect8) {
-        Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced};
+    float ts[3] = {MAX_FLOAT, MAX_FLOAT, MAX_FLOAT};
+    if(rayIntersectTriangle(prismPlaneCorners[indxV0], ray, ts)) {
+        Triangle2D tD = {{v0Displaced, uv0Displaced, uv2Displaced}, t.path, t.pathCount + 1};
+        tD.path[t.pathCount] = 0;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(t0, min(t5, t8));
+        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
         tWTCounter++;
     }
-    if(intersect1 || intersect2 || intersect6) {
-        Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced};
+
+    ts[0] = MAX_FLOAT; ts[1] = MAX_FLOAT; ts[2] = MAX_FLOAT;
+    if(rayIntersectTriangle(prismPlaneCorners[indxV1], ray, ts)) {
+        Triangle2D tD = {{uv0Displaced, v1Displaced, uv1Displaced}, t.path, t.pathCount + 1};
+        tD.path[t.pathCount] = 1;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(t1, min(t2, t6));
+        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
         tWTCounter++;
     }
-    if(intersect3 || intersect4 || intersect7) {
-        Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced};
+
+    ts[0] = MAX_FLOAT; ts[1] = MAX_FLOAT; ts[2] = MAX_FLOAT;
+    if(rayIntersectTriangle(prismPlaneCorners[indxV2], ray, ts)) {
+        Triangle2D tD = {{uv2Displaced, uv1Displaced, v2Displaced}, t.path, t.pathCount + 1};
+        tD.path[t.pathCount] = 3;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(t3, min(t4, t7));
+        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
         tWTCounter++;
     }
-    if(intersect6 || intersect7 || intersect8) {
-        Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced};
+
+    ts[0] = MAX_FLOAT; ts[1] = MAX_FLOAT; ts[2] = MAX_FLOAT;
+    if(rayIntersectTriangle(prismPlaneCorners[indxCenter], ray, ts)) {
+        Triangle2D tD = {{uv0Displaced, uv1Displaced, uv2Displaced}, t.path, t.pathCount + 1};
+        tD.path[t.pathCount] = 2;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(t6, min(t7, t8));
+        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
         tWTCounter++;
     }
 
@@ -360,64 +326,6 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffse
 
     for(int i = 0; i < tWTCounter; i++) {
         its.triangles[i] = trianglesWithT[sortedIndices[i]].tri;
-    }
-
-    /*
-     * In some edge cases it's possible that it misses the displaced triangle in this subdivision level, but it actually hits the displaced triangle in one of the next subdivision levels.
-     * So we check whether it possibly hits it in one of the next subdivision levels (without explicitly subdividing into all subsequent levels!).
-     */
-    Edge allEdges[9] = {e0Displaced, e1Displaced, e2Displaced, e3Displaced, e4Displaced, e5Displaced, e6Displaced, e7Displaced, e8Displaced};
-
-    bool iwdeR[9]; //intersect with edges that divert to the right
-    bool iwdeL[3]; //intersect with edges that divert to the left (only for inner edges)
-    [unroll] for(int i = 0; i < 9; i++) {
-        Edge ou = allEdges[i];
-
-		bool intersectL, intersectR;
-        checkNeighbourTriangles(ou, dOffset, ray, intersectL, intersectR);
-
-        iwdeR[i] = intersectR;
-        if(i >= 6) iwdeL[i-6] = intersectL;
-    }
-
-    float2 midPoints[4];
-    int mpCount = 0;
-    for(mpCount = 0; mpCount < its.count; mpCount++) {
-        Triangle2D tr = its.triangles[mpCount];
-        midPoints[mpCount] = (1.0f/3.0f) * tr.vertices[0].position + (1.0f/3.0f) * tr.vertices[1].position + (1.0f/3.0f) * tr.vertices[2].position;
-    }
-
-    if(iwdeR[0] || iwdeR[5] || iwdeL[2]) {
-        Triangle2D tD = {v0Displaced, uv0Displaced, uv2Displaced};
-
-        if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count] = tD;
-        	its.count++;
-        }
-    }
-    if(iwdeR[1] || iwdeR[2] || iwdeL[0]) {
-        Triangle2D tD = {uv0Displaced, v1Displaced, uv1Displaced};
-
-        if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count] = tD;
-        	its.count++;
-        }
-    }
-    if(iwdeR[3] || iwdeR[4] || iwdeL[1]) {
-        Triangle2D tD = {uv1Displaced, v2Displaced, uv2Displaced};
-
-        if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count] = tD;
-        	its.count++;
-        }
-    }
-    if(iwdeR[6] || iwdeR[7] || iwdeR[8]) {
-        Triangle2D tD = {uv0Displaced, uv1Displaced, uv2Displaced};
-
-        if(!isTriangleAlreadyInList(tD, midPoints, mpCount)) {
-            its.triangles[its.count] = tD;
-        	its.count++;
-        }
     }
 
     return its;
@@ -463,7 +371,7 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 // @param p: the plane of the triangle
 // @param v0Pos: position of vertex 0
 // @param dOffset: offset into the displacement buffer for this triangle
-void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, int dOffset) {
+void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, int dOffset, int minMaxOffset) {
     struct StackElement {
         Triangle2D tri;
         int level;
@@ -493,7 +401,7 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, in
 
             if(rayTraceTriangle(vs3D[0].position, vs3D[1].position, vs3D[2].position)) return; //Ray hits triangle, so we can stop searching
         } else {
-            IntersectedTriangles its = getIntersectedTriangles(current.tri, ray, dOffset);
+            IntersectedTriangles its = getIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level);
 
             //Push intersected triangles in reverse order to maintain correct processing order (triangles should be processed in the order the ray hits them)
             //TODO switching data structure to a queue would make more sense...
@@ -514,13 +422,15 @@ void main() {
     InputVertex v0 = vertices[tData.vIndices.x];
     InputVertex v1 = vertices[tData.vIndices.y];
     InputVertex v2 = vertices[tData.vIndices.z];
-    float2 v0GridCoordinate = float2(0,0);
+    float2 v0GridCoordinate = float2(0, 0);
     float2 v1GridCoordinate = float2(tData.nRows - 1, 0);
     float2 v2GridCoordinate = float2(tData.nRows - 1, tData.nRows - 1);
 
-    Vertex2D prismCornerV0 = {prismPlaneCorners[PrimitiveIndex() * 3], 0, v0GridCoordinate};
-    Vertex2D prismCornerV1 = {prismPlaneCorners[(PrimitiveIndex() * 3) + 1], 0, v1GridCoordinate};
-    Vertex2D prismCornerV2 = {prismPlaneCorners[(PrimitiveIndex() * 3) + 2], 0, v2GridCoordinate};
+    float2 prismCorners[3] = prismPlaneCorners[tData.minMaxOffset]; //Prism corners
+
+    Vertex2D prismCornerV0 = {prismCorners[0], 0, v0GridCoordinate};
+    Vertex2D prismCornerV1 = {prismCorners[1], 0, v1GridCoordinate};
+    Vertex2D prismCornerV2 = {prismCorners[2], 0, v2GridCoordinate};
 
     /*
 	 * Creation of 2D triangle where vertices are displaced
@@ -530,7 +440,9 @@ void main() {
     Vertex2D v0Proj = createVertexFromPlanePosition(v0GridCoordinate, tData.displacementOffset);
     Vertex2D v1Proj = createVertexFromPlanePosition(v1GridCoordinate, tData.displacementOffset);
     Vertex2D v2Proj = createVertexFromPlanePosition(v2GridCoordinate, tData.displacementOffset);
-    Triangle2D t = {v0Proj, v1Proj, v2Proj};
+
+    int path[5];
+    Triangle2D t = {{v0Proj, v1Proj, v2Proj}, path, 0};
 
     /*
  	 * Creation of 2D ray
@@ -579,5 +491,5 @@ void main() {
     float2 minMaxDispl = minMaxDisplacements[tData.minMaxOffset];
     if((heightEntry < minMaxDispl.x && exitEntry < minMaxDispl.x) || (heightEntry > minMaxDispl.y && exitEntry > minMaxDispl.y)) return;
 
-	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset);
+	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset, tData.minMaxOffset);
 }
