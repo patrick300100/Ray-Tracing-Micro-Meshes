@@ -210,9 +210,9 @@ bool raySeparatesPointAndEdge(Edge e, Ray2D ray, float2 p) {
 //Checks if a ray intersects a triangle
 // @param vertices: the vertex positions of the triangle
 // @param ray: the ray in 2D
-// @param ts: an array of t's (one for each edge) that will hold the ray parameter t in case the ray hits the edge
+// @param ts: an 'array' of t's (one for each edge) that will hold the ray parameter t in case the ray hits the edge
 // @return true if the triangle was hit, false if not. It will also return the intersection point in terms of the ray parameter `t` for each edge that was hit
-bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float ts[3]) {
+bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float3 ts) {
     Vertex2D v0 = {vertices[0], 0, float2(-1, -1)};
     Vertex2D v1 = {vertices[1], 0, float2(-1, -1)};
     Vertex2D v2 = {vertices[2], 0, float2(-1, -1)};
@@ -228,21 +228,34 @@ bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float ts[3]) {
     return intersect1 || intersect2 || intersect3;
 }
 
+bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOffset, Ray2D ray) {
+    float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
+    float exitT = max(ts[0], max(ts[1], ts[2]));
+
+    if(abs(entryT - exitT) < 0.0001f) entryT = 0; //If ray origin is inside triangle
+
+    float heightEntry = ray.heightTo3DRay(entryT, p, v0Pos);
+    float exitEntry = ray.heightTo3DRay(exitT, p, v0Pos);
+
+    float2 minMaxDispl = minMaxDisplacements[minMaxOffset];
+    return (heightEntry < minMaxDispl.x && exitEntry < minMaxDispl.x) || (heightEntry > minMaxDispl.y && exitEntry > minMaxDispl.y);
+}
+
 //Given a triangle, we subdivide it one level and return the triangles that the ray crossed
 // @param t: the triangle that should be tested for ray intersection
 // @param ray: the ray in 2D
 // @param dOffset: the offset into a buffer that gets data for this triangle
 // @return an array of triangles that the ray crossed in order
-IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level) {
+IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, float3 v0Pos) {
     /*
      * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
-     *       v2
+     *       v0
 	 *      /   \
 	 *     /     \
-	 *   uv2-----uv1
+	 *   uv0-----uv2
 	 *   / \    /  \
 	 *  /   \  /    \
-	 * v0----uv0----v1
+	 * v1----uv1----v2
      */
 	Vertex2D v0Displaced = t.vertices[0];
     Vertex2D v1Displaced = t.vertices[1];
@@ -278,43 +291,43 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffse
     TriangleWithT trianglesWithT[4];
     int tWTCounter = 0;
 
-    float ts[3] = {MAX_FLOAT, MAX_FLOAT, MAX_FLOAT};
-    if(rayIntersectTriangle(prismPlaneCorners[indxV0], ray, ts)) {
+    float3 ts = {-1, -1, -1};
+    if(rayIntersectTriangle(prismPlaneCorners[indxV0], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV0, ray)) {
         Triangle2D tD = {{v0Displaced, uv0Displaced, uv2Displaced}, t.path, t.pathCount + 1};
         tD.path[t.pathCount] = 0;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
+        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
         tWTCounter++;
     }
 
-    ts[0] = MAX_FLOAT; ts[1] = MAX_FLOAT; ts[2] = MAX_FLOAT;
-    if(rayIntersectTriangle(prismPlaneCorners[indxV1], ray, ts)) {
+    ts[0] = -1; ts[1] = -1; ts[2] = -1;
+    if(rayIntersectTriangle(prismPlaneCorners[indxV1], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV1, ray)) {
         Triangle2D tD = {{uv0Displaced, v1Displaced, uv1Displaced}, t.path, t.pathCount + 1};
         tD.path[t.pathCount] = 1;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
+        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
         tWTCounter++;
     }
 
-    ts[0] = MAX_FLOAT; ts[1] = MAX_FLOAT; ts[2] = MAX_FLOAT;
-    if(rayIntersectTriangle(prismPlaneCorners[indxV2], ray, ts)) {
+    ts[0] = -1; ts[1] = -1; ts[2] = -1;
+    if(rayIntersectTriangle(prismPlaneCorners[indxV2], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV2, ray)) {
         Triangle2D tD = {{uv2Displaced, uv1Displaced, v2Displaced}, t.path, t.pathCount + 1};
         tD.path[t.pathCount] = 3;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
+        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
         tWTCounter++;
     }
 
-    ts[0] = MAX_FLOAT; ts[1] = MAX_FLOAT; ts[2] = MAX_FLOAT;
-    if(rayIntersectTriangle(prismPlaneCorners[indxCenter], ray, ts)) {
+    ts[0] = -1; ts[1] = -1; ts[2] = -1;
+    if(rayIntersectTriangle(prismPlaneCorners[indxCenter], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxCenter, ray)) {
         Triangle2D tD = {{uv0Displaced, uv1Displaced, uv2Displaced}, t.path, t.pathCount + 1};
         tD.path[t.pathCount] = 2;
 
         trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0], min(ts[1], ts[2]));
+        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
         tWTCounter++;
     }
 
@@ -401,7 +414,7 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, in
 
             if(rayTraceTriangle(vs3D[0].position, vs3D[1].position, vs3D[2].position)) return; //Ray hits triangle, so we can stop searching
         } else {
-            IntersectedTriangles its = getIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level);
+            IntersectedTriangles its = getIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, v0Pos);
 
             //Push intersected triangles in reverse order to maintain correct processing order (triangles should be processed in the order the ray hits them)
             //TODO switching data structure to a queue would make more sense...
@@ -480,16 +493,7 @@ void main() {
 
     if(!baseEdges[0].intersect && !baseEdges[1].intersect && !baseEdges[2].intersect) return;
 
-    float entryT = min(baseEdges[0].rayT < 0 ? MAX_T : baseEdges[0].rayT, min(baseEdges[1].rayT < 0 ? MAX_T : baseEdges[1].rayT, baseEdges[2].rayT < 0 ? MAX_T : baseEdges[2].rayT));
-    float exitT = max(baseEdges[0].rayT, max(baseEdges[1].rayT, baseEdges[2].rayT));
-
-    if(abs(entryT - exitT) < 0.0001f) entryT = 0; //If ray origin is inside triangle
-
-    float heightEntry = ray.heightTo3DRay(entryT, p, v0.position);
-    float exitEntry = ray.heightTo3DRay(exitT, p, v0.position);
-
-    float2 minMaxDispl = minMaxDisplacements[tData.minMaxOffset];
-    if((heightEntry < minMaxDispl.x && exitEntry < minMaxDispl.x) || (heightEntry > minMaxDispl.y && exitEntry > minMaxDispl.y)) return;
+    if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, v0.position, tData.minMaxOffset, ray)) return;
 
 	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset, tData.minMaxOffset);
 }

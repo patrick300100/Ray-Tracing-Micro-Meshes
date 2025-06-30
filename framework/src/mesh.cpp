@@ -223,7 +223,7 @@ std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) cons
                 glm::vec3 v1v2 = (currentTriangle.v1 + currentTriangle.v2) / 2.0f;
                 TriangleElement t1{.v0 = currentTriangle.v0, .v1 = v0v1, .v2 = v0v2}; //Triangle near v0
                 TriangleElement t2{.v0 = v0v1, .v1 = currentTriangle.v1, .v2 = v1v2}; //Triangle near v1
-                TriangleElement t3{.v0 = v0v1, .v1 = v0v2, .v2 = v1v2}; //Center triangle
+                TriangleElement t3{.v0 = v0v1, .v1 = v1v2, .v2 = v0v2}; //Center triangle
                 TriangleElement t4{.v0 = v0v2, .v1 = v1v2, .v2 = currentTriangle.v2}; //Triangle near v2
 
                 for(const auto& ut : currentTriangle.uTriangles) {
