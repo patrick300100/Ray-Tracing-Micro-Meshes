@@ -84,18 +84,13 @@ struct Triangle2D {
     //3 means it entered the triangle close to v2
     int path[5];
     int pathCount;
+
+    float entryT; //Ray parameter `t` where it enters the triangle
 };
 
-//Utility struct to represent the array of triangles that the ray crossed (in order)
-//You can't directly return an array in HLSL from a function, so we wrap it in a struct
-struct IntersectedTriangles {
-    Triangle2D triangles[4]; //A maximum of 4 micro triangles can be crossed (exceptional when ray hits vertex, usually it's 3 or less)
-    int count; //How many triangles actually got crossed
-};
-
-struct TriangleWithT {
+struct StackElement {
     Triangle2D tri;
-    float minT; //Ray parameter `t` where ray entered the triangle
+    int level;
 };
 
 cbuffer meshData : register(b1) {
@@ -108,6 +103,7 @@ StructuredBuffer<float3> positions2D : register(t3); //Contains 2D position in t
 StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarchically) min and max displacements. x component is min displacement, y component is max displacement
 StructuredBuffer<float2[3]> prismPlaneCorners : register(t5);
 
+static const int MAX_STACK_DEPTH = 256; //Should be enough
 static const float MAX_FLOAT = 3.402823466e+38f;
 static const float MAX_T = 100000.0f; //Should coincide (or be higher) with the ray.TMax in ray generation
 
@@ -169,24 +165,19 @@ bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t) {
     } else return false;
 }
 
-//Sort triangles based on the entry point of the ray.
-// @param ts: the triangles with the ray parameter t, which is the `t` at which the ray enters the triangle
-// @param size: the number of triangles in the ts array
-// @return sorted triangles, expressed in its indices.
-void sort(TriangleWithT ts[4], int size, out int indices[4]) {
-    // Initialize indices to 0..size-1
-    for (int i = 0; i < size; i++) {
-        indices[i] = i;
-    }
+//Sorts part of the stack in decreasing order. Since a stack is FIFO, we pop the triangles with the smallest `entryT` first.
+// @param stack: the stack
+// @param startIndex: the start index from where to sort
+// @param count: how many elements to sort, starting from startIndex
+void sort(inout StackElement stack[MAX_STACK_DEPTH], int startIndex, int count) {
+    if (count <= 1) return; // Trivially sorted
 
-    if(size <= 1) return; //Trivially sorted
-
-    for(int i = 0; i < size - 1; i++) {
-        for(int j = 0; j < size - 1 - i; j++) {
-            if(ts[indices[j]].minT > ts[indices[j + 1]].minT) {
-                int temp = indices[j];
-                indices[j] = indices[j + 1];
-                indices[j + 1] = temp;
+    for(int i = 0; i < count - 1; i++) {
+        for(int j = startIndex; j < startIndex + count - 1 - i; j++) {
+            if(stack[j].tri.entryT < stack[j + 1].tri.entryT) {
+                StackElement temp = stack[j];
+                stack[j] = stack[j + 1];
+                stack[j + 1] = temp;
             }
         }
     }
@@ -246,7 +237,7 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOff
 // @param ray: the ray in 2D
 // @param dOffset: the offset into a buffer that gets data for this triangle
 // @return an array of triangles that the ray crossed in order
-IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, float3 v0Pos) {
+void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, float3 v0Pos, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop) {
     /*
      * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v0
@@ -288,60 +279,49 @@ IntersectedTriangles getIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffse
     int indxV2 = minMaxOffset + finalStartIndex + 3;
     int indxCenter = minMaxOffset + finalStartIndex + 2;
 
-    TriangleWithT trianglesWithT[4];
-    int tWTCounter = 0;
+    int oldStackTop = stackTop;
 
     float3 ts = {-1, -1, -1};
     if(rayIntersectTriangle(prismPlaneCorners[indxV0], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV0, ray)) {
-        Triangle2D tD = {{v0Displaced, uv0Displaced, uv2Displaced}, t.path, t.pathCount + 1};
+        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
+        Triangle2D tD = {{v0Displaced, uv0Displaced, uv2Displaced}, t.path, t.pathCount + 1, entryT};
         tD.path[t.pathCount] = 0;
 
-        trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        tWTCounter++;
+        StackElement se = {tD, level + 1};
+        stack[stackTop++] = se;
     }
 
     ts[0] = -1; ts[1] = -1; ts[2] = -1;
     if(rayIntersectTriangle(prismPlaneCorners[indxV1], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV1, ray)) {
-        Triangle2D tD = {{uv0Displaced, v1Displaced, uv1Displaced}, t.path, t.pathCount + 1};
+        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
+        Triangle2D tD = {{uv0Displaced, v1Displaced, uv1Displaced}, t.path, t.pathCount + 1, entryT};
         tD.path[t.pathCount] = 1;
 
-        trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        tWTCounter++;
+        StackElement se = {tD, level + 1};
+        stack[stackTop++] = se;
     }
 
     ts[0] = -1; ts[1] = -1; ts[2] = -1;
     if(rayIntersectTriangle(prismPlaneCorners[indxV2], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV2, ray)) {
-        Triangle2D tD = {{uv2Displaced, uv1Displaced, v2Displaced}, t.path, t.pathCount + 1};
+        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
+		Triangle2D tD = {{uv2Displaced, uv1Displaced, v2Displaced}, t.path, t.pathCount + 1, entryT};
         tD.path[t.pathCount] = 3;
 
-        trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        tWTCounter++;
+        StackElement se = {tD, level + 1};
+        stack[stackTop++] = se;
     }
 
     ts[0] = -1; ts[1] = -1; ts[2] = -1;
     if(rayIntersectTriangle(prismPlaneCorners[indxCenter], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxCenter, ray)) {
-        Triangle2D tD = {{uv0Displaced, uv1Displaced, uv2Displaced}, t.path, t.pathCount + 1};
+        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
+        Triangle2D tD = {{uv0Displaced, uv1Displaced, uv2Displaced}, t.path, t.pathCount + 1, entryT};
         tD.path[t.pathCount] = 2;
 
-        trianglesWithT[tWTCounter].tri = tD;
-        trianglesWithT[tWTCounter].minT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        tWTCounter++;
+        StackElement se = {tD, level + 1};
+        stack[stackTop++] = se;
     }
 
-    IntersectedTriangles its;
-    its.count = tWTCounter;
-
-    int sortedIndices[4];
-    sort(trianglesWithT, tWTCounter, sortedIndices);
-
-    for(int i = 0; i < tWTCounter; i++) {
-        its.triangles[i] = trianglesWithT[sortedIndices[i]].tri;
-    }
-
-    return its;
+    sort(stack, oldStackTop, stackTop - oldStackTop);
 }
 
 bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
@@ -385,13 +365,7 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 // @param v0Pos: position of vertex 0
 // @param dOffset: offset into the displacement buffer for this triangle
 void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, int dOffset, int minMaxOffset) {
-    struct StackElement {
-        Triangle2D tri;
-        int level;
-	};
-
     //Creating and populating the stack
-    const int MAX_STACK_DEPTH = 256; //Should be enough
     StackElement stack[MAX_STACK_DEPTH];
     int stackTop = 0;
 
@@ -414,16 +388,7 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, in
 
             if(rayTraceTriangle(vs3D[0].position, vs3D[1].position, vs3D[2].position)) return; //Ray hits triangle, so we can stop searching
         } else {
-            IntersectedTriangles its = getIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, v0Pos);
-
-            //Push intersected triangles in reverse order to maintain correct processing order (triangles should be processed in the order the ray hits them)
-            //TODO switching data structure to a queue would make more sense...
-            for(int i = its.count - 1; i >= 0; i--) {
-                Triangle2D nextTri = its.triangles[i];
-
-                StackElement se = { nextTri, current.level + 1 };
-                stack[stackTop++] = se;
-            }
+            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, v0Pos, stack, stackTop);
         }
     }
 }
@@ -455,7 +420,7 @@ void main() {
     Vertex2D v2Proj = createVertexFromPlanePosition(v2GridCoordinate, tData.displacementOffset);
 
     int path[5];
-    Triangle2D t = {{v0Proj, v1Proj, v2Proj}, path, 0};
+    Triangle2D t = {{v0Proj, v1Proj, v2Proj}, path, 0, -1};
 
     /*
  	 * Creation of 2D ray
