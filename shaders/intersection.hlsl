@@ -325,7 +325,7 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
 }
 
 bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
-    const float epsilon = 1e-4f; //Needed for small floating-point errors
+    const float epsilon = 1e-3f; //Needed for small floating-point errors
 
     float3 origin = WorldRayOrigin();
     float3 dir = WorldRayDirection();
@@ -432,7 +432,7 @@ void main() {
     float3 D_proj = normalize(D - dot(D, p.N) * p.N);
 
     float2 rayOrigin2D = projectTo2D(O_proj, p.T, p.B, v0.position);
-    float2 rayDir2D = normalize(projectTo2D(O_proj + D_proj, p.T, p.B, v0.position) - rayOrigin2D);
+    float2 rayDir2D = normalize(float2(dot(D_proj, p.T), dot(D_proj, p.B)));
     Ray2D ray = {rayOrigin2D, rayDir2D};
 
     /*
