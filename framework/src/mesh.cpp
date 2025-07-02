@@ -346,7 +346,6 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec
         Triangle2D t2D;
     };
 
-    int counter = 0;
     for(const auto& [t, dOffset] : std::views::zip(triangles, dOffsets)) {
         const auto nRows = numberOfVerticesOnEdge();
 
@@ -411,8 +410,6 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec
                 queue.emplace(t4);
             }
         }
-
-        counter++;
     }
 
     return boundTriangles;
