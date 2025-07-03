@@ -297,6 +297,8 @@ Triangle2DOnlyPos bindVerticesForTriangle(const Triangle2D& t, int dOffset, cons
     const auto v1 = t.v1;
     const auto v2 = t.v2;
 
+    bool isCCW = t.isCCW();
+
     std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
     std::vector vertices{v0, v1, v2};
     for(int i = 0; i < 3; i++) {
@@ -321,7 +323,8 @@ Triangle2DOnlyPos bindVerticesForTriangle(const Triangle2D& t, int dOffset, cons
             Vertex2D planePos = {{temp.x, temp.y}, startCoord};
             float dist = distPointToEdge(planePos.position, e);
 
-            if(e.isRight(planePos.position) && dist > maxDistance) {
+            bool isOutsideTriangle = isCCW ? e.isRight(planePos.position) : e.isLeft(planePos.position); //Checks if a point is on the outside-side of the edge
+            if(isOutsideTriangle && dist > maxDistance) {
                 maxDistance = dist;
                 vertices[i] = planePos;
             }
