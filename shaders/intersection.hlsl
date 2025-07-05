@@ -145,7 +145,7 @@ Vertex2D createVertexFromPlanePosition(float2 coords, int dOffset) {
     return v;
 }
 
-bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t) {
+bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t, float epsilon = 1e-6f) {
 	float2 val1 = ray.origin - e.start.position;
     float2 val2 = e.end.position - e.start.position;
     float2 val3 = float2(-ray.direction.y, ray.direction.x);
@@ -157,7 +157,7 @@ bool rayIntersectsEdge(Ray2D ray, Edge e, inout float t) {
     float t1 = determinant(float2x2(val2, val1)) / denom;
     float t2 = dot(val1, val3) / denom;
 
-    bool intersect = (t1 >= 0) && (t2 >= 0) && (t2 <= 1);
+    bool intersect = (t1 >= 0) && (t2 >= -epsilon) && (t2 <= 1 + epsilon);
 
     if(intersect) {
         t = t1;
@@ -453,7 +453,7 @@ void main() {
     [unroll] for(int i = 0; i < 3; i++) {
         EdgeHitInfo be = baseEdges[i];
 
-        baseEdges[i].intersect = rayIntersectsEdge(ray, be.e, baseEdges[i].rayT);
+        baseEdges[i].intersect = rayIntersectsEdge(ray, be.e, baseEdges[i].rayT, 0.0f);
     }
 
     if(!baseEdges[0].intersect && !baseEdges[1].intersect && !baseEdges[2].intersect) return;
