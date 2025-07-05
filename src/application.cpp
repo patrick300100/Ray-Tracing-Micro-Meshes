@@ -138,7 +138,7 @@ public:
 
             std::vector<int> allOffsets;
             std::ranges::transform(tData, std::back_inserter(allOffsets), [&](const TriangleData& td) { return td.displacementOffset; });
-            const auto newCorners = cpuMesh.boundingVertices(planePositions, allOffsets);
+            const auto newCorners = cpuMesh.boundingTriangles(planePositions, allOffsets);
 
             prismCornersBuffer = DefaultBuffer<Triangle2DOnlyPos>(device, newCorners.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             prismCornersBuffer.upload(newCorners, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);

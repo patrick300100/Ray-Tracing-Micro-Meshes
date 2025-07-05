@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <queue>
 #include <unordered_set>
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
 
 struct VertexHash {
     size_t operator()(const Vertex& v) const {
@@ -292,55 +294,80 @@ Line computeTranslatedLine(const glm::vec2& p0, const glm::vec2& p1, const glm::
     return {a, b};
 }
 
-Triangle2DOnlyPos bindVerticesForTriangle(const Triangle2D& t, int dOffset, const std::vector<glm::vec3>& positions2D) {
-    const auto v0 = t.v0;
-    const auto v1 = t.v1;
-    const auto v2 = t.v2;
-
-    bool isCCW = t.isCCW();
-
-    std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
-    std::vector vertices{v0, v1, v2};
-    for(int i = 0; i < 3; i++) {
-        const auto& e = edges[i];
-        int incrementX = 0, incrementY = 0;
-        float maxDistance = 0.0f;
-
-        glm::uvec2 startCoord = min(e.start.coordinates, e.end.coordinates);
-        glm::uvec2 endCoord = max(e.start.coordinates, e.end.coordinates);
-
-        if(startCoord.x == endCoord.x) incrementY = 1;
-        else if(startCoord.y == endCoord.y) incrementX = 1;
-        else {
-            incrementX = 1;
-            incrementY = 1;
-        }
-
-        startCoord = {startCoord.x + incrementX, startCoord.y + incrementY};
-
-        while(startCoord != endCoord) {
-            const auto temp = getPlanePosition(startCoord, dOffset, positions2D);
-            Vertex2D planePos = {{temp.x, temp.y}, startCoord};
-            float dist = distPointToEdge(planePos.position, e);
-
-            bool isOutsideTriangle = isCCW ? e.isRight(planePos.position) : e.isLeft(planePos.position); //Checks if a point is on the outside-side of the edge
-            if(isOutsideTriangle && dist > maxDistance) {
-                maxDistance = dist;
-                vertices[i] = planePos;
-            }
-
-            startCoord = {startCoord.x + incrementX, startCoord.y + incrementY};
-        }
+//Hash function for glm::vec2's.
+//This hash function only works for float values which come 'from the same source'.
+//
+//So if you store a float in a variable, hash it, and later hash that same variable again, you will get the same output, because the bit pattern is the same.
+//If you have 2 different float values (which are almost similar) computed in 2 different ways, then this hash will likely give 2 different outputs
+template<>
+struct std::hash<glm::vec2> {
+    std::size_t operator()(const glm::vec2& v) const noexcept {
+        std::size_t h1 = std::hash<float>{}(v.x);
+        std::size_t h2 = std::hash<float>{}(v.y);
+        return h1 ^ (h2 << 1);
     }
+};
 
-    const auto lv0v1 = computeTranslatedLine(v0.position, v1.position, vertices[0].position);
-    const auto lv1v2 = computeTranslatedLine(v1.position, v2.position, vertices[1].position);
-    const auto lv0v2 = computeTranslatedLine(v0.position, v2.position, vertices[2].position);
+/**
+ * Creates a binding triangle around a set of points.
+ *
+ * We use OpenCV's implementation to find the smallest triangle that encapsulates all points. Sometimes this fails, if the points
+ * are too close to each other. In that case, we fall back to edge-expansion.
+ *
+ * Edge expansion means that we, given the 3 edges of a 'reference' triangle, for each edge, look for the most outer point
+ * (the point that is the farthest away from that edge, and on the outside of the reference triangle). Then we expand that
+ * edge so that that point is also contained in the reference triangle.
+ *
+ * @param t the 'reference' triangle (see method description)
+ * @param points the points that need to be encanspulated
+ * @return the 3 corner vertices of the triangle that encapsulates all points
+ */
+Triangle2DOnlyPos createBindTriangle(const Triangle2D& t, const std::unordered_set<glm::vec2>& points) {
+    try {
+        std::vector<cv::Point2f> cvPoints;
+        cvPoints.reserve(points.size());
 
-    return{lv0v1.intersect(lv0v2), lv0v1.intersect(lv1v2), lv0v2.intersect(lv1v2)};
+        for (const auto& p : points) {
+            cvPoints.emplace_back(p.x, p.y);
+        }
+
+        std::vector<cv::Point2f> triangle;
+        cv::minEnclosingTriangle(cvPoints, triangle);
+
+        return { {triangle.at(0).x, triangle.at(0).y}, {triangle.at(1).x, triangle.at(1).y}, {triangle.at(2).x, triangle.at(2).y} };
+    } catch (const std::exception& ex) {
+        const auto v0 = t.v0;
+        const auto v1 = t.v1;
+        const auto v2 = t.v2;
+
+        const bool isCCW = t.isCCW();
+
+        const std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
+        std::vector vertices{v0, v1, v2};
+
+        for(const auto& p : points) {
+            for(int i = 0; i < 3; i++) {
+                float maxDistance = 0.0f;
+                const auto& e = edges[i];
+
+                const float dist = distPointToEdge(p, e);
+                const bool isOutsideTriangle = isCCW ? e.isRight(p) : e.isLeft(p); //Checks if a point is on the outside-side of the edge
+                if(isOutsideTriangle && dist > maxDistance) {
+                    maxDistance = dist;
+                    vertices[i] = {p, {-1, -1}};
+                }
+            }
+        }
+
+        const auto lv0v1 = computeTranslatedLine(v0.position, v1.position, vertices[0].position);
+        const auto lv1v2 = computeTranslatedLine(v1.position, v2.position, vertices[1].position);
+        const auto lv0v2 = computeTranslatedLine(v0.position, v2.position, vertices[2].position);
+
+        return {lv0v1.intersect(lv0v2), lv0v1.intersect(lv1v2), lv0v2.intersect(lv1v2)};
+    }
 }
 
-std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
+std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
     std::vector<Triangle2DOnlyPos> boundTriangles;
 
     struct TriangleElement {
@@ -356,9 +383,9 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec
         const auto v1 = vertices[t.baseVertexIndices.y];
         const auto v2 = vertices[t.baseVertexIndices.z];
 
-        const Vertex2D v02D(getPlanePosition(glm::vec2{0,0}, dOffset, positions2D), {0, 0});
-        const Vertex2D v12D(getPlanePosition(glm::vec2{nRows - 1,0}, dOffset, positions2D), {nRows - 1,0});
-        const Vertex2D v22D(getPlanePosition(glm::vec2{nRows - 1,nRows - 1}, dOffset, positions2D), {nRows - 1,nRows - 1});
+        const Vertex2D v02D(getPlanePosition(glm::vec2{0, 0}, dOffset, positions2D), {0, 0});
+        const Vertex2D v12D(getPlanePosition(glm::vec2{nRows - 1, 0}, dOffset, positions2D), {nRows - 1,0});
+        const Vertex2D v22D(getPlanePosition(glm::vec2{nRows - 1, nRows - 1}, dOffset, positions2D), {nRows - 1,nRows - 1});
         Triangle2D tr2D(v02D, v12D, v22D);
 
         //Set up the queue
@@ -370,12 +397,18 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec
             queue.pop();
 
             //Compute bound triangle
-            const auto boundVs = bindVerticesForTriangle(currentTriangle.t2D, dOffset, positions2D);
+            std::unordered_set<glm::vec2> allPoints;
+            for(const auto& uf : currentTriangle.uTriangles) {
+                allPoints.insert(positions2D[dOffset + uf.x]);
+                allPoints.insert(positions2D[dOffset + uf.y]);
+                allPoints.insert(positions2D[dOffset + uf.z]);
+            }
+            const auto boundVs = createBindTriangle(currentTriangle.t2D, allPoints);
             boundTriangles.emplace_back(boundVs.v0, boundVs.v1, boundVs.v2);
 
             //Add next elements to queue
             if(currentTriangle.uTriangles.size() != 1) {
-                //Now we compute the next 4 triangles for processing
+                //Now we divide all micro triangles into the 4 regions (after a bunch of data computation...)
                 glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
                 glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
                 glm::vec3 v1v2 = (currentTriangle.v1 + currentTriangle.v2) / 2.0f;
@@ -397,6 +430,7 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingVertices(const std::vector<glm::vec
                 TriangleElement t3{.v0 = v0v1, .v1 = v1v2, .v2 = v0v2, .t2D = {v0v12D, v1v22D, v2v02D}}; //Center triangle
                 TriangleElement t4{.v0 = v0v2, .v1 = v1v2, .v2 = currentTriangle.v2, .t2D = {v2v02D, v1v22D, currentTriangle.t2D.v2}}; //Triangle near v2
 
+                //For each micro-triangle, we use the midpoint to identify in which of the 4 regions it belongs
                 for(const auto& ut : currentTriangle.uTriangles) {
                     glm::vec3 midPoint = (1.0f/3.0f) * t.uVertices[ut[0]].position + (1.0f/3.0f) * t.uVertices[ut[1]].position + (1.0f/3.0f) * t.uVertices[ut[2]].position;
                     glm::vec3 bc = Triangle::computeBaryCoords(currentTriangle.v0, currentTriangle.v1, currentTriangle.v2, midPoint);
