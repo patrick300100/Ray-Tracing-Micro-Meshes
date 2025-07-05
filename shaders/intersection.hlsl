@@ -226,10 +226,10 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOff
     if(abs(entryT - exitT) < 0.0001f) entryT = 0; //If ray origin is inside triangle
 
     float heightEntry = ray.heightTo3DRay(entryT, p, v0Pos);
-    float exitEntry = ray.heightTo3DRay(exitT, p, v0Pos);
+    float heightExit = ray.heightTo3DRay(exitT, p, v0Pos);
 
     float2 minMaxDispl = minMaxDisplacements[minMaxOffset];
-    return (heightEntry < minMaxDispl.x && exitEntry < minMaxDispl.x) || (heightEntry > minMaxDispl.y && exitEntry > minMaxDispl.y);
+    return (heightEntry < minMaxDispl.x && heightExit < minMaxDispl.x) || (heightEntry > minMaxDispl.y && heightExit > minMaxDispl.y);
 }
 
 //Given a triangle, we subdivide it one level and return the triangles that the ray crossed
