@@ -225,7 +225,9 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOff
     float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
     float exitT = max(ts[0], max(ts[1], ts[2]));
 
-    if(abs(entryT - exitT) < 0.0001f) entryT = 0; //If ray origin is inside triangle
+    //If we have only 1 intersection point we can not reliably determine if the 3D ray crosses the displacement region.
+    //So we return that it crosses it, even if it might not be the case.
+    if(abs(entryT - exitT) < 0.0001f) return false;
 
     float heightEntry = ray.heightTo3DRay(entryT, p, v0Pos);
     float heightExit = ray.heightTo3DRay(exitT, p, v0Pos);
