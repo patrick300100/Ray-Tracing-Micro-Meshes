@@ -174,10 +174,12 @@ void sort(inout StackElement stack[MAX_STACK_DEPTH], int startIndex, int count) 
 
     for(int i = 0; i < count - 1; i++) {
         for(int j = startIndex; j < startIndex + count - 1 - i; j++) {
-            if(stack[j].tri.entryT < stack[j + 1].tri.entryT) {
-                StackElement temp = stack[j];
-                stack[j] = stack[j + 1];
-                stack[j + 1] = temp;
+            StackElement sej = stack[j];
+            StackElement sejPlusOne = stack[j + 1];
+
+            if(sej.tri.entryT < sejPlusOne.tri.entryT) {
+                stack[j] = sejPlusOne;
+                stack[j + 1] = sej;
             }
         }
     }
