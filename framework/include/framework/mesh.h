@@ -4,6 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include "TransformationChannel.h"
 #include <vector>
+#include "../../src/Triangle2D.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 DISABLE_WARNINGS_POP()
@@ -66,4 +67,11 @@ public:
 
 	[[nodiscard]] int numberOfVerticesOnEdge() const; //Computes the number of (micro) vertices on an edge
 	[[nodiscard]] int subdivisionLevel() const; //Computes the subdivision level of the triangles (same for each triangle)
+
+	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<int>& offsets) const; //Compute hierarchical minimum and maximum displacements
+
+	//Compute plane positions of vertices that bound a displaced triangle in 2D.
+	//So if we have a displaced triangle, and we project it onto the base triangle's plane, we compute 3 vertex positions that bound that triangle.
+	//The returned vector should be seen as entries of 3: entry 0, 1, and 2 are vertices that bound displaced triangle 0, entry 3, 4, 5 bound triangle 1, etc.
+	[[nodiscard]] std::vector<Triangle2DOnlyPos> boundingTriangles(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const;
 };

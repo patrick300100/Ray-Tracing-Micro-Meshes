@@ -2,6 +2,10 @@
 
 #include <ranges>
 #include <unordered_map>
+#include <queue>
+#include <unordered_set>
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
 
 struct VertexHash {
     size_t operator()(const Vertex& v) const {
@@ -171,4 +175,279 @@ int Mesh::numberOfVerticesOnEdge() const {
 
 int Mesh::subdivisionLevel() const {
     return std::countr_zero(triangles[0].uFaces.size()) / 2;
+}
+
+std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) const {
+    std::vector<glm::vec2> minMaxDisplacements;
+
+    struct TriangleElement {
+        std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
+        glm::vec3 v0, v1, v2; //Corner vertices
+    };
+
+    for(const auto& t : triangles) {
+        offsets.push_back(minMaxDisplacements.size());
+
+        //First we compute the normal of the triangle's plane
+        const auto v0 = vertices[t.baseVertexIndices.x];
+        const auto v1 = vertices[t.baseVertexIndices.y];
+        const auto v2 = vertices[t.baseVertexIndices.z];
+
+        glm::vec3 e1 = v1.position - v0.position;
+        glm::vec3 e2 = v2.position - v0.position;
+        glm::vec3 N = glm::normalize(cross(e1, e2)); // plane normal
+
+        //Then we set up the queue
+        std::queue<TriangleElement> queue;
+        queue.emplace(t.uFaces, v0.position, v1.position, v2.position);
+
+        while(!queue.empty()) {
+            //Compute min and max displacement of this triangle
+            const auto currentTriangle = queue.front();
+            queue.pop();
+            float minDisplacement = 100000.0f, maxDisplacement = -100000.0f;
+
+            for(const auto& ut : currentTriangle.uTriangles) {
+                for(int i = 0; i < 3; i++) {
+                    float height = glm::dot(t.uVertices[ut[i]].displacement, N);
+
+                    maxDisplacement = std::max(maxDisplacement, height);
+                    minDisplacement = std::min(minDisplacement, height);
+                }
+            }
+
+            minMaxDisplacements.emplace_back(minDisplacement, maxDisplacement);
+
+            if(currentTriangle.uTriangles.size() != 1) {
+                //Now we compute the next 4 triangles for processing
+                glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
+                glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
+                glm::vec3 v1v2 = (currentTriangle.v1 + currentTriangle.v2) / 2.0f;
+                TriangleElement t1{.v0 = currentTriangle.v0, .v1 = v0v1, .v2 = v0v2}; //Triangle near v0
+                TriangleElement t2{.v0 = v0v1, .v1 = currentTriangle.v1, .v2 = v1v2}; //Triangle near v1
+                TriangleElement t3{.v0 = v0v1, .v1 = v1v2, .v2 = v0v2}; //Center triangle
+                TriangleElement t4{.v0 = v0v2, .v1 = v1v2, .v2 = currentTriangle.v2}; //Triangle near v2
+
+                for(const auto& ut : currentTriangle.uTriangles) {
+                    glm::vec3 midPoint = (1.0f/3.0f) * t.uVertices[ut[0]].position + (1.0f/3.0f) * t.uVertices[ut[1]].position + (1.0f/3.0f) * t.uVertices[ut[2]].position;
+                    glm::vec3 bc = Triangle::computeBaryCoords(currentTriangle.v0, currentTriangle.v1, currentTriangle.v2, midPoint);
+
+                    if(bc.x > 0.5) t1.uTriangles.push_back(ut);
+                    else if(bc.y > 0.5) t2.uTriangles.push_back(ut);
+                    else if(bc.z > 0.5) t4.uTriangles.push_back(ut);
+                    else t3.uTriangles.push_back(ut);
+                }
+
+                queue.emplace(t1);
+                queue.emplace(t2);
+                queue.emplace(t3);
+                queue.emplace(t4);
+            }
+        }
+    }
+
+    return minMaxDisplacements;
+}
+
+glm::vec3 getPlanePosition(glm::vec2 coords, int dOffset, const std::vector<glm::vec3>& positions2D) {
+    int sum = (coords.x * (coords.x + 1)) / 2; //Sum from 1 until coords.x (closed formula of summation)
+    int index = sum + coords.y;
+
+    return positions2D[dOffset + index];
+}
+
+float distPointToEdge(const glm::vec2& p, const Edge2D& e) {
+    const glm::vec2 a = e.start.position;
+    const glm::vec2 b = e.end.position;
+
+    const glm::vec2 ab = b - a;
+    const glm::vec2 ap = p - a;
+
+    float abLengthSquared = glm::dot(ab, ab);
+
+    float t = glm::dot(ap, ab) / abLengthSquared;
+    t = std::clamp(t, 0.0f, 1.0f);
+
+    glm::vec2 closest = a + t * ab;
+    return glm::length(p - closest);
+}
+
+struct Line {
+    double a, b; //Linear line y = ax + b
+
+    //Returns the intersection point of this line with another line
+    [[nodiscard]] glm::vec2 intersect(const Line& other) const {
+        double x = (other.b - b) / (a - other.a);
+        double y = a * x + b;
+        return {x, y};
+    }
+};
+
+//Computes a line through p0 and p1, and then translates the line to go through p2 (i.e., same slope as the line from p0 to p1)
+Line computeTranslatedLine(const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2) {
+    double dx = p1.x - p0.x;
+    double dy = p1.y - p0.y;
+    double a = dy / dx;
+
+    double b = p2.y - a * p2.x;
+
+    return {a, b};
+}
+
+//Hash function for glm::vec2's.
+//This hash function only works for float values which come 'from the same source'.
+//
+//So if you store a float in a variable, hash it, and later hash that same variable again, you will get the same output, because the bit pattern is the same.
+//If you have 2 different float values (which are almost similar) computed in 2 different ways, then this hash will likely give 2 different outputs
+template<>
+struct std::hash<glm::vec2> {
+    std::size_t operator()(const glm::vec2& v) const noexcept {
+        std::size_t h1 = std::hash<float>{}(v.x);
+        std::size_t h2 = std::hash<float>{}(v.y);
+        return h1 ^ (h2 << 1);
+    }
+};
+
+/**
+ * Creates a binding triangle around a set of points.
+ *
+ * We use OpenCV's implementation to find the smallest triangle that encapsulates all points. Sometimes this fails, if the points
+ * are too close to each other. In that case, we fall back to edge-expansion.
+ *
+ * Edge expansion means that we, given the 3 edges of a 'reference' triangle, for each edge, look for the most outer point
+ * (the point that is the farthest away from that edge, and on the outside of the reference triangle). Then we expand that
+ * edge so that that point is also contained in the reference triangle.
+ *
+ * @param t the 'reference' triangle (see method description)
+ * @param points the points that need to be encanspulated
+ * @return the 3 corner vertices of the triangle that encapsulates all points
+ */
+Triangle2DOnlyPos createBindTriangle(const Triangle2D& t, const std::unordered_set<glm::vec2>& points) {
+    try {
+        std::vector<cv::Point2f> cvPoints;
+        cvPoints.reserve(points.size());
+
+        for (const auto& p : points) {
+            cvPoints.emplace_back(p.x, p.y);
+        }
+
+        std::vector<cv::Point2f> triangle;
+        cv::minEnclosingTriangle(cvPoints, triangle);
+
+        return { {triangle.at(0).x, triangle.at(0).y}, {triangle.at(1).x, triangle.at(1).y}, {triangle.at(2).x, triangle.at(2).y} };
+    } catch (const std::exception& ex) {
+        const auto v0 = t.v0;
+        const auto v1 = t.v1;
+        const auto v2 = t.v2;
+
+        const bool isCCW = t.isCCW();
+
+        const std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
+        std::vector vertices{v0, v1, v2};
+
+        for(const auto& p : points) {
+            for(int i = 0; i < 3; i++) {
+                float maxDistance = 0.0f;
+                const auto& e = edges[i];
+
+                const float dist = distPointToEdge(p, e);
+                const bool isOutsideTriangle = isCCW ? e.isRight(p) : e.isLeft(p); //Checks if a point is on the outside-side of the edge
+                if(isOutsideTriangle && dist > maxDistance) {
+                    maxDistance = dist;
+                    vertices[i] = {p, {-1, -1}};
+                }
+            }
+        }
+
+        const auto lv0v1 = computeTranslatedLine(v0.position, v1.position, vertices[0].position);
+        const auto lv1v2 = computeTranslatedLine(v1.position, v2.position, vertices[1].position);
+        const auto lv0v2 = computeTranslatedLine(v0.position, v2.position, vertices[2].position);
+
+        return {lv0v1.intersect(lv0v2), lv0v1.intersect(lv1v2), lv0v2.intersect(lv1v2)};
+    }
+}
+
+std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
+    std::vector<Triangle2DOnlyPos> boundTriangles;
+
+    struct TriangleElement {
+        std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
+        glm::vec3 v0, v1, v2; //Corner vertices, not displaced
+        Triangle2D t2D;
+    };
+
+    for(const auto& [t, dOffset] : std::views::zip(triangles, dOffsets)) {
+        const auto nRows = numberOfVerticesOnEdge();
+
+        const auto v0 = vertices[t.baseVertexIndices.x];
+        const auto v1 = vertices[t.baseVertexIndices.y];
+        const auto v2 = vertices[t.baseVertexIndices.z];
+
+        const Vertex2D v02D(getPlanePosition(glm::vec2{0, 0}, dOffset, positions2D), {0, 0});
+        const Vertex2D v12D(getPlanePosition(glm::vec2{nRows - 1, 0}, dOffset, positions2D), {nRows - 1,0});
+        const Vertex2D v22D(getPlanePosition(glm::vec2{nRows - 1, nRows - 1}, dOffset, positions2D), {nRows - 1,nRows - 1});
+        Triangle2D tr2D(v02D, v12D, v22D);
+
+        //Set up the queue
+        std::queue<TriangleElement> queue;
+        queue.emplace(t.uFaces, v0.position, v1.position, v2.position, tr2D);
+
+        while(!queue.empty()) {
+            const auto currentTriangle = queue.front();
+            queue.pop();
+
+            //Compute bound triangle
+            std::unordered_set<glm::vec2> allPoints;
+            for(const auto& uf : currentTriangle.uTriangles) {
+                allPoints.insert(positions2D[dOffset + uf.x]);
+                allPoints.insert(positions2D[dOffset + uf.y]);
+                allPoints.insert(positions2D[dOffset + uf.z]);
+            }
+            const auto boundVs = createBindTriangle(currentTriangle.t2D, allPoints);
+            boundTriangles.emplace_back(boundVs.v0, boundVs.v1, boundVs.v2);
+
+            //Add next elements to queue
+            if(currentTriangle.uTriangles.size() != 1) {
+                //Now we divide all micro triangles into the 4 regions (after a bunch of data computation...)
+                glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
+                glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
+                glm::vec3 v1v2 = (currentTriangle.v1 + currentTriangle.v2) / 2.0f;
+
+                Edge2D e12D(currentTriangle.t2D.v0, currentTriangle.t2D.v1);
+                Edge2D e22D(currentTriangle.t2D.v1, currentTriangle.t2D.v2);
+                Edge2D e32D(currentTriangle.t2D.v2, currentTriangle.t2D.v0);
+
+                const auto e1Middle = e12D.middle();
+                const auto e2Middle = e22D.middle();
+                const auto e3Middle = e32D.middle();
+
+                Vertex2D v0v12D(getPlanePosition(e1Middle.coordinates, dOffset, positions2D), e1Middle.coordinates);
+                Vertex2D v1v22D(getPlanePosition(e2Middle.coordinates, dOffset, positions2D), e2Middle.coordinates);
+                Vertex2D v2v02D(getPlanePosition(e3Middle.coordinates, dOffset, positions2D), e3Middle.coordinates);
+
+                TriangleElement t1{.v0 = currentTriangle.v0, .v1 = v0v1, .v2 = v0v2, .t2D = {currentTriangle.t2D.v0, v0v12D, v2v02D}}; //Triangle near v0
+                TriangleElement t2{.v0 = v0v1, .v1 = currentTriangle.v1, .v2 = v1v2, .t2D = {v0v12D, currentTriangle.t2D.v1, v1v22D}}; //Triangle near v1
+                TriangleElement t3{.v0 = v0v1, .v1 = v1v2, .v2 = v0v2, .t2D = {v0v12D, v1v22D, v2v02D}}; //Center triangle
+                TriangleElement t4{.v0 = v0v2, .v1 = v1v2, .v2 = currentTriangle.v2, .t2D = {v2v02D, v1v22D, currentTriangle.t2D.v2}}; //Triangle near v2
+
+                //For each micro-triangle, we use the midpoint to identify in which of the 4 regions it belongs
+                for(const auto& ut : currentTriangle.uTriangles) {
+                    glm::vec3 midPoint = (1.0f/3.0f) * t.uVertices[ut[0]].position + (1.0f/3.0f) * t.uVertices[ut[1]].position + (1.0f/3.0f) * t.uVertices[ut[2]].position;
+                    glm::vec3 bc = Triangle::computeBaryCoords(currentTriangle.v0, currentTriangle.v1, currentTriangle.v2, midPoint);
+
+                    if(bc.x > 0.5) t1.uTriangles.push_back(ut);
+                    else if(bc.y > 0.5) t2.uTriangles.push_back(ut);
+                    else if(bc.z > 0.5) t4.uTriangles.push_back(ut);
+                    else t3.uTriangles.push_back(ut);
+                }
+
+                queue.emplace(t1);
+                queue.emplace(t2);
+                queue.emplace(t3);
+                queue.emplace(t4);
+            }
+        }
+    }
+
+    return boundTriangles;
 }
