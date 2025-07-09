@@ -58,20 +58,6 @@ struct Edge {
     float2 middleCoord() {
         return (start.coordinates + end.coordinates) * 0.5;
     }
-
-    //Returns true if poit p lies on the left side of this edge, false when it is to the right or exactly on it
-    bool isLeft(float2 p) {
-        return !isRight(p);
-    }
-
-    //Returns true if point p lies on the right side of this edge (or is exactly on it)
-    bool isRight(float2 p) {
-        float2 SE = end.position - start.position;
-        float2 SP = p - start.position;
-        float cross = SE.x * SP.y - SE.y * SP.x;
-
-        return cross <= 0;
-    }
 };
 
 struct Triangle2D {
@@ -183,21 +169,6 @@ void sort(inout StackElement stack[MAX_STACK_DEPTH], int startIndex, int count) 
             }
         }
     }
-}
-
-//Given an edge, a ray, and a point p, computes whether there is a ray passing between p and the edge.
-// @return true if the ray passes between the point and the edge, false if not. This function also returns true if the ray exactly hits p
-bool raySeparatesPointAndEdge(Edge e, Ray2D ray, float2 p) {
-    float2 A = e.start.position;
-    float2 B = e.end.position;
-    float2 R0 = ray.origin;
-    float2 Rd = ray.direction;
-
-    float oP = (Rd.x * (p.y - R0.y) - Rd.y * (p.x - R0.x));
-    float oA = (Rd.x * (A.y - R0.y) - Rd.y * (A.x - R0.x));
-    float oB = (Rd.x * (B.y - R0.y) - Rd.y * (B.x - R0.x));
-
-    return abs(oP) < 1e-4f || (oP * oA < 0) || (oP * oB < 0);
 }
 
 //Checks if a ray intersects a triangle
