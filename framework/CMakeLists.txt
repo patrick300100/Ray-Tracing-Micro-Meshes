@@ -18,8 +18,6 @@ else()
 	set(OpenGL_GL_PREFERENCE GLVND) # Prevent CMake warning about legacy fallback on Linux.
 	find_package(OpenGL REQUIRED)
 
-	find_package(OpenCV REQUIRED COMPONENTS core imgproc)
-
 	add_library(CGFramework STATIC
 		"src/trackball.cpp"
 		"src/image.cpp"
@@ -33,7 +31,7 @@ else()
 	target_include_directories(CGFramework PRIVATE "include/framework/" PUBLIC "include/")
 	target_include_directories(CGFramework PUBLIC "third_party/d3dx12")
 	target_link_directories(CGFramework PUBLIC "third_party/dxc/dxcompiler.lib")
-	target_link_libraries(CGFramework PUBLIC OpenGL::GL glad glm glfw imgui stb fmt nativefiledialog tinygltf json umeshtools_core dxcompiler ${OpenCV_LIBS})
+	target_link_libraries(CGFramework PUBLIC OpenGL::GL glad glm glfw imgui stb fmt nativefiledialog tinygltf json umeshtools_core dxcompiler)
 	target_compile_features(CGFramework PUBLIC cxx_std_20)
 	target_compile_definitions(CGFramework PRIVATE _USE_MATH_DEFINES)
 	set_property(TARGET CGFramework PROPERTY POSITION_INDEPENDENT_CODE ON)

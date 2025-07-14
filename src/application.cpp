@@ -33,13 +33,13 @@ DISABLE_WARNINGS_POP()
 
 struct RayTraceVertex {
     glm::vec3 position;
+    glm::vec3 direction;
 };
 
 struct TriangleData {
     glm::uvec3 vIndices;
     int nRows;
     int displacementOffset;
-    glm::vec3 T, B, N;
     int minMaxOffset;
 };
 
@@ -86,7 +86,7 @@ public:
 
             std::vector<RayTraceVertex> vertices;
             vertices.reserve(mesh[0].cpuMesh.vertices.size());
-            std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(vertices), [](const Vertex& v) { return RayTraceVertex{v.position}; });
+            std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(vertices), [](const Vertex& v) { return RayTraceVertex{v.position, v.direction}; });
 
             vertexBuffer = DefaultBuffer<RayTraceVertex>(device, vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             vertexBuffer.upload(vertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -96,24 +96,25 @@ public:
 
             std::vector<TriangleData> tData;
             tData.reserve(cpuMesh.triangles.size());
-            std::vector<glm::vec3> planePositions;
+            std::vector<float> displacementScales; //Contains a scalar of how much to displace along the displacement direction
             for(const auto& triangle : cpuMesh.triangles) {
                 //Compute plane positions of each micro vertex
                 const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
                 const auto v1 = cpuMesh.vertices[triangle.baseVertexIndices.y];
                 const auto v2 = cpuMesh.vertices[triangle.baseVertexIndices.z];
 
-                glm::vec3 e1 = v1.position - v0.position;
-                glm::vec3 e2 = v2.position - v0.position;
-                glm::vec3 N = glm::normalize(cross(e1, e2)); // plane normal
+                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), displacementScales.size());
 
-                glm::vec3 T = normalize(e1);
-                glm::vec3 B = glm::normalize(cross(N, T));
+                std::ranges::transform(triangle.uVertices, std::back_inserter(displacementScales), [&](const uVertex& uv) {
+                    const glm::vec3 bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
+                    const auto interpolatedDir = bc.x * v0.direction + bc.y * v1.direction + bc.z * v2.direction;
 
-                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), planePositions.size(), T, B, N);
-
-                TBNPlane::Plane plane(T, B, N, v0.position);
-                std::ranges::transform(triangle.uVertices, std::back_inserter(planePositions), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
+                    //Avoid dividing by 0
+                    if(interpolatedDir.x != 0.0f) return uv.displacement.x / interpolatedDir.x;
+                    if(interpolatedDir.y != 0.0f) return uv.displacement.y / interpolatedDir.y;
+                    if(interpolatedDir.z != 0.0f) return uv.displacement.z / interpolatedDir.z;
+                    return 0.0f; //No displacement
+                });
             }
 
             std::vector<int> offsets;
@@ -128,9 +129,9 @@ public:
             triangleData.upload(tData, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<TriangleData>(triangleData.getBuffer());
 
-            planePositionsBuffer = DefaultBuffer<glm::vec3>(device, planePositions.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            planePositionsBuffer.upload(planePositions, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<glm::vec3>(planePositionsBuffer.getBuffer());
+            planePositionsBuffer = DefaultBuffer<float>(device, displacementScales.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            planePositionsBuffer.upload(displacementScales, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<float>(planePositionsBuffer.getBuffer());
 
             minMaxDisplacementBuffer = DefaultBuffer<glm::vec2>(device, minMaxDisplacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             minMaxDisplacementBuffer.upload(minMaxDisplacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -138,7 +139,7 @@ public:
 
             std::vector<int> allOffsets;
             std::ranges::transform(tData, std::back_inserter(allOffsets), [&](const TriangleData& td) { return td.displacementOffset; });
-            const auto newCorners = cpuMesh.boundingTriangles(planePositions, allOffsets);
+            const auto newCorners = cpuMesh.boundingTriangles(allOffsets);
 
             prismCornersBuffer = DefaultBuffer<Triangle2DOnlyPos>(device, newCorners.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             prismCornersBuffer.upload(newCorners, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -362,7 +363,7 @@ private:
     UploadBuffer<glm::mat4> invViewProjBuffer;
     UploadBuffer<int> meshDataBuffer;
     DefaultBuffer<TriangleData> triangleData;
-    DefaultBuffer<glm::vec3> planePositionsBuffer;
+    DefaultBuffer<float> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<Triangle2DOnlyPos> prismCornersBuffer;
