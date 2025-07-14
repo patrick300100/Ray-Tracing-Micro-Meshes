@@ -15,6 +15,13 @@ struct Plane {
 
         return float3(dot(movedP, T), dot(movedP, B), dot(movedP, N));
     }
+
+    //Unprojects a 2D point back to 3D
+    // @param p: the position on the plane
+    // @param h: the height to displace along the plane's normal
+    float3 unproject(float2 p, float h) {
+        return origin + p.x * T + p.y * B + h * N;
+    }
 };
 
 struct TriangleData {
@@ -44,7 +51,7 @@ struct Ray2D {
     }
 
     //Computes the height from a point on this ray to its corresponding point on the 3D ray
-    float heightTo3DRay(float t2d, Plane p, float3 v0) {
+    float heightTo3DRay(float t2d, Plane p) {
         float3 D = WorldRayDirection();
 
         float3 D_plane = D - dot(D, p.N) * p.N;
@@ -54,7 +61,7 @@ struct Ray2D {
         float3 P3D = WorldRayOrigin() + t3 * D;
 
         float2 hit2D = on(t2d);
-        float3 P_plane = v0 + hit2D.x * p.T + hit2D.y * p.B;
+        float3 P_plane = p.origin + hit2D.x * p.T + hit2D.y * p.B;
 
         return dot(P3D - P_plane, p.N);
     }
@@ -114,11 +121,6 @@ float2 projectTo2D(float3 p, float3 T, float3 B, float3 v0Pos) {
 	float3 rel = p - v0Pos;
 
     return float2(dot(rel, T), dot(rel, B));
-}
-
-//Unprojects a 2D point back to 3D
-float3 unproject(float2 p, float h, Plane plane, float3 v0Pos) {
-    return v0Pos + p.x * plane.T + p.y * plane.B + h * plane.N;
 }
 
 //Gets the position of a (micro) vertex on the plane, as well as the height needed to displace it.
@@ -185,7 +187,7 @@ bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float3 ts) {
     return intersect1 || intersect2 || intersect3;
 }
 
-bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOffset, Ray2D ray) {
+bool isOutsideDisplacementRegion(float3 ts, Plane p, int minMaxOffset, Ray2D ray) {
     float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
     float exitT = max(ts[0], max(ts[1], ts[2]));
 
@@ -193,8 +195,8 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOff
     //So we return that it crosses it, even if it might not be the case.
     if(abs(entryT - exitT) < 0.0001f) return false;
 
-    float heightEntry = ray.heightTo3DRay(entryT, p, v0Pos);
-    float heightExit = ray.heightTo3DRay(exitT, p, v0Pos);
+    float heightEntry = ray.heightTo3DRay(entryT, p);
+    float heightExit = ray.heightTo3DRay(exitT, p);
 
     float2 minMaxDispl = minMaxDisplacements[minMaxOffset];
     return (heightEntry < minMaxDispl.x && heightExit < minMaxDispl.x) || (heightEntry > minMaxDispl.y && heightExit > minMaxDispl.y);
@@ -205,7 +207,7 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, float3 v0Pos, int minMaxOff
 // @param ray: the ray in 2D
 // @param dOffset: the offset into a buffer that gets data for this triangle
 // @return an array of triangles that the ray crossed in order
-void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, float3 v0Pos, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop) {
+void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop) {
     /*
      * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v0
@@ -216,18 +218,21 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
 	 *  /   \  /    \
 	 * v1----uv1----v2
      */
-	Vertex2D v0Displaced = t.vertices[0];
-    Vertex2D v1Displaced = t.vertices[1];
-    Vertex2D v2Displaced = t.vertices[2];
+	Vertex2D v0 = t.vertices[0];
+    Vertex2D v1 = t.vertices[1];
+    Vertex2D v2 = t.vertices[2];
 
-    Edge base0 = {v0Displaced, v1Displaced};
-    Edge base1 = {v1Displaced, v2Displaced};
-    Edge base2 = {v2Displaced, v0Displaced};
+    Edge base0 = {v0, v1};
+    Edge base1 = {v1, v2};
+    Edge base2 = {v2, v0};
 
-    Vertex2D uv0Displaced = base0.middle();
-    Vertex2D uv1Displaced = base1.middle();
-    Vertex2D uv2Displaced = base2.middle();
+    Vertex2D uv0 = base0.middle();
+    Vertex2D uv1 = base1.middle();
+    Vertex2D uv2 = base2.middle();
 
+    /*
+     * Compute indices for the buffer which holds the bounding triangles
+     */
     int fourPower = 1U << (2 * (level + 1)); //This computes 4^(level+1)
     int firstLocalIndexNxtLvl = (fourPower - 1) / 3;
 
@@ -249,44 +254,27 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
 
     int oldStackTop = stackTop;
 
-    float3 ts = {-1, -1, -1};
-    if(rayIntersectTriangle(prismPlaneCorners[indxV0], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV0, ray)) {
-        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        Triangle2D tD = {{v0Displaced, uv0Displaced, uv2Displaced}, t.path, t.pathCount + 1, entryT, indxV0};
-        tD.path[t.pathCount] = 0;
+    /*
+     * We're now going to check the 4 sub-triangles for ray intersection
+     */
+    int boundingTriIndices[4] = {indxV0, indxV1, indxV2, indxCenter};
+    Vertex2D subTriV0[4] = {v0, uv0, uv2, uv0};
+    Vertex2D subTriV1[4] = {uv0, v1, uv1, uv1};
+    Vertex2D subTriV2[4] = {uv2, uv1, v2, uv2};
+    int pathVals[4] = {0, 1, 3, 2};
 
-        StackElement se = {tD, level + 1};
-        stack[stackTop++] = se;
-    }
+    [unroll] for(int i = 0; i < 4; i++) {
+        float3 ts = {-1, -1, -1};
 
-    ts[0] = -1; ts[1] = -1; ts[2] = -1;
-    if(rayIntersectTriangle(prismPlaneCorners[indxV1], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV1, ray)) {
-        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        Triangle2D tD = {{uv0Displaced, v1Displaced, uv1Displaced}, t.path, t.pathCount + 1, entryT, indxV1};
-        tD.path[t.pathCount] = 1;
+        if(rayIntersectTriangle(prismPlaneCorners[boundingTriIndices[i]], ray, ts) && !isOutsideDisplacementRegion(ts, p, boundingTriIndices[i], ray)) {
+            float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
 
-        StackElement se = {tD, level + 1};
-        stack[stackTop++] = se;
-    }
+            Triangle2D newT = {{subTriV0[i], subTriV1[i], subTriV2[i]}, t.path, t.pathCount + 1, entryT, boundingTriIndices[i]};
+            newT.path[t.pathCount] = pathVals[i];
 
-    ts[0] = -1; ts[1] = -1; ts[2] = -1;
-    if(rayIntersectTriangle(prismPlaneCorners[indxV2], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxV2, ray)) {
-        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-		Triangle2D tD = {{uv2Displaced, uv1Displaced, v2Displaced}, t.path, t.pathCount + 1, entryT, indxV2};
-        tD.path[t.pathCount] = 3;
-
-        StackElement se = {tD, level + 1};
-        stack[stackTop++] = se;
-    }
-
-    ts[0] = -1; ts[1] = -1; ts[2] = -1;
-    if(rayIntersectTriangle(prismPlaneCorners[indxCenter], ray, ts) && !isOutsideDisplacementRegion(ts, p, v0Pos, indxCenter, ray)) {
-        float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
-        Triangle2D tD = {{uv0Displaced, uv1Displaced, uv2Displaced}, t.path, t.pathCount + 1, entryT, indxCenter};
-        tD.path[t.pathCount] = 2;
-
-        StackElement se = {tD, level + 1};
-        stack[stackTop++] = se;
+            StackElement se = {newT, level + 1};
+            stack[stackTop++] = se;
+        }
     }
 
     sort(stack, oldStackTop, stackTop - oldStackTop);
@@ -327,12 +315,13 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 // Ray trace a micro mesh triangle (a triangle which can be subdivided).
 // The idea was to use recursion, but recursion is now allowed in shaders.
 // So we simulate recursion by converting it to a loop-based approach and manually creating a call stack.
-// @param rootTri: the displaced and undisplaced triangle
+// @param rootTri: the base triangle in 2D
 // @param ray: the ray in 2D
 // @param p: the plane of the triangle
-// @param v0Pos: position of vertex 0
 // @param dOffset: offset into the displacement buffer for this triangle
-void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, int dOffset, int minMaxOffset, float3 directions[3]) {
+// @param minMaxOffset: offset into the minmax buffer for this triangle
+// @param directions: the directions of the 3 base vertices
+void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int minMaxOffset, float3 directions[3]) {
     //Creating and populating the stack
     StackElement stack[MAX_STACK_DEPTH];
     int stackTop = 0;
@@ -359,14 +348,14 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, float3 v0Pos, in
             };
 
             float3 vs3D[3] = {
-                unproject(vertices[0], heights[0], p, v0Pos),
-                unproject(vertices[1], heights[1], p, v0Pos),
-                unproject(vertices[2], heights[2], p, v0Pos)
+                p.unproject(vertices[0], heights[0]),
+                p.unproject(vertices[1], heights[1]),
+                p.unproject(vertices[2], heights[2])
             };
 
             if(rayTraceTriangle(vs3D[0], vs3D[1], vs3D[2])) return; //Ray hits triangle, so we can stop searching
         } else {
-            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, v0Pos, stack, stackTop);
+            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, stack, stackTop);
         }
     }
 }
@@ -401,7 +390,7 @@ void main() {
     Plane p = {T, B, N, v0.position};
 
     /*
-	 * Creation of 2D triangle where vertices are displaced
+	 * Creation of 2D triangle
 	 */
     Vertex2D v0Proj = {float3(1, 0, 0), v0GridCoordinate};
     Vertex2D v1Proj = {float3(0, 1, 0), v1GridCoordinate};
@@ -446,8 +435,8 @@ void main() {
 
     if(!baseEdges[0].intersect && !baseEdges[1].intersect && !baseEdges[2].intersect) return;
 
-    if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, v0.position, tData.minMaxOffset, ray)) return;
+    if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, tData.minMaxOffset, ray)) return;
 
     float3 directions[3] = {v0.direction, v1.direction, v2.direction};
-	rayTraceMMTriangle(t, ray, p, v0.position, tData.displacementOffset, tData.minMaxOffset, directions);
+	rayTraceMMTriangle(t, ray, p, tData.displacementOffset, tData.minMaxOffset, directions);
 }
