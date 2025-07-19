@@ -271,28 +271,6 @@ float distPointToEdge(const glm::vec2& p, const Edge2D& e) {
     return glm::length(p - closest);
 }
 
-struct Line {
-    double a, b; //Linear line y = ax + b
-
-    //Returns the intersection point of this line with another line
-    [[nodiscard]] glm::vec2 intersect(const Line& other) const {
-        double x = (other.b - b) / (a - other.a);
-        double y = a * x + b;
-        return {x, y};
-    }
-};
-
-//Computes a line through p0 and p1, and then translates the line to go through p2 (i.e., same slope as the line from p0 to p1)
-Line computeTranslatedLine(const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2) {
-    double dx = p1.x - p0.x;
-    double dy = p1.y - p0.y;
-    double a = dy / dx;
-
-    double b = p2.y - a * p2.x;
-
-    return {a, b};
-}
-
 //Hash function for glm::vec2's.
 //This hash function only works for float values which come 'from the same source'.
 //
@@ -308,17 +286,17 @@ struct std::hash<glm::vec2> {
 };
 
 /**
- * Creates a binding triangle around a set of points. We use edge-expansion.
+ * Computes the maximum distance for a triangle that includes all micro-vertices.
  *
- * Edge expansion means that we, given the 3 edges of a 'reference' triangle, for each edge, look for the most outer point
- * (the point that is the farthest away from that edge, and on the outside of the reference triangle). Then we expand that
- * edge so that that point is also contained in the reference triangle.
+ * Given a triangle, future subdivision levels can lie outside the triangle. We compute delta, which specifies how much
+ * to expand the edges of the current subdivision level's triangle to also include micro-vertices of future subdivision
+ * levels.
  *
- * @param t the 'reference' triangle (see method description)
+ * @param t a triangle
  * @param points the points that need to be encapsulated
- * @return the 3 corner vertices of the triangle that encapsulates all points
+ * @return a delta, which specifies by how much to expand the triangle's edges to encapsulate all points
  */
-Triangle2DOnlyPos createBindTriangle(const Triangle2D& t, const std::unordered_set<glm::vec2>& points) {
+float computeTriangleDelta(const Triangle2D& t, const std::unordered_set<glm::vec2>& points) {
     const auto v0 = t.v0;
     const auto v1 = t.v1;
     const auto v2 = t.v2;
@@ -328,8 +306,8 @@ Triangle2DOnlyPos createBindTriangle(const Triangle2D& t, const std::unordered_s
     const std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
     std::vector vertices{v0, v1, v2};
 
+    float maxDistance = 0.0f;
     for(int i = 0; i < 3; i++) {
-        float maxDistance = 0.0f;
         const auto& e = edges[i];
 
         for(const auto& p : points) {
@@ -337,19 +315,14 @@ Triangle2DOnlyPos createBindTriangle(const Triangle2D& t, const std::unordered_s
             const bool isOutsideTriangle = isCCW ? e.isRight(p) : e.isLeft(p); //Checks if a point is on the outside-side of the edge
             if(isOutsideTriangle && dist > maxDistance) {
                 maxDistance = dist;
-                vertices[i] = {p, {-1, -1}};
             }
         }
     }
 
-    const auto lv0v1 = computeTranslatedLine(v0.position, v1.position, vertices[0].position);
-    const auto lv1v2 = computeTranslatedLine(v1.position, v2.position, vertices[1].position);
-    const auto lv0v2 = computeTranslatedLine(v0.position, v2.position, vertices[2].position);
-
-    return {lv0v1.intersect(lv0v2), lv0v1.intersect(lv1v2), lv0v2.intersect(lv1v2)};
+    return maxDistance;
 }
 
-std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<int>& dOffsets) const {
+std::vector<float> Mesh::boundingTriangles(const std::vector<int>& dOffsets) const {
     std::vector<glm::vec3> positions2D;
     for(const auto& triangle : triangles) {
         //Compute plane positions of each micro vertex
@@ -368,7 +341,7 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<int>& d
         std::ranges::transform(triangle.uVertices, std::back_inserter(positions2D), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
     }
 
-    std::vector<Triangle2DOnlyPos> boundTriangles;
+    std::vector<float> boundTriangles;
 
     struct TriangleElement {
         std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
@@ -403,8 +376,8 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<int>& d
                 allPoints.insert(positions2D[dOffset + uf.y]);
                 allPoints.insert(positions2D[dOffset + uf.z]);
             }
-            const auto boundVs = createBindTriangle(currentTriangle.t2D, allPoints);
-            boundTriangles.emplace_back(boundVs.v0, boundVs.v1, boundVs.v2);
+            const auto delta = computeTriangleDelta(currentTriangle.t2D, allPoints);
+            boundTriangles.emplace_back(delta);
 
             //Add next elements to queue
             if(currentTriangle.uTriangles.size() != 1) {

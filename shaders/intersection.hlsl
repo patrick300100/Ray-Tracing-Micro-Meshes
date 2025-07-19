@@ -38,6 +38,7 @@ struct InputVertex {
 };
 
 struct Vertex2D {
+    float2 position; //position on plane before displacing it
     float3 bc; //Barycentric coordinates
     uint2 coordinates; //local grid coordinates
 };
@@ -72,7 +73,7 @@ struct Edge {
     Vertex2D end;
 
     Vertex2D middle() {
-        Vertex2D v = {(start.bc + end.bc) * 0.5, (start.coordinates + end.coordinates) * 0.5};
+        Vertex2D v = {(start.position + end.position) * 0.5, (start.bc + end.bc) * 0.5, (start.coordinates + end.coordinates) * 0.5};
         return v;
     }
 };
@@ -105,10 +106,9 @@ StructuredBuffer<InputVertex> vertices : register(t1);
 StructuredBuffer<TriangleData> triangleData : register(t2);
 StructuredBuffer<float> displacementScales : register(t3); //Contains a scalar of how much to displace along the displacement direction
 StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarchically) min and max displacements. x component is min displacement, y component is max displacement
-StructuredBuffer<float2[3]> prismPlaneCorners : register(t5);
+StructuredBuffer<float> deltas : register(t5);
 
 static const int MAX_STACK_DEPTH = 256; //Should be enough
-static const float MAX_FLOAT = 3.402823466e+38f;
 static const float MAX_T = 100000.0f; //Should coincide (or be higher) with the ray.TMax in ray generation
 
 //Projects a position onto the plane defined by T and B
@@ -123,15 +123,69 @@ float2 projectTo2D(float3 p, float3 T, float3 B, float3 v0Pos) {
     return float2(dot(rel, T), dot(rel, B));
 }
 
-//Gets the position of a (micro) vertex on the plane, as well as the height needed to displace it.
+//Gets the scale by how much to displace a micro-vertex along its direction.
 // @param triangular grid coordinates of the vertex
 // @param the offset into the buffer
-// @return a float3, where xy are the plane coordinates, and z is the height needed to displace
+// @return a float that represents by how much to displace a micro-vertex along its direction.
 float getDisplacementScale(float2 coords, int dOffset) {
     int sum = (coords.x * (coords.x + 1)) / 2; //Sum from 1 until coords.x (closed formula of summation)
     int index = sum + coords.y;
 
     return displacementScales[dOffset + index];
+}
+
+//Computes the intersection point of 2 lines
+//https://en.wikipedia.org/wiki/Line-line_intersection#Given_two_points_on_each_line
+float2 intersect(float2 p1, float2 p2, float2 p3, float2 p4) {
+    float val1 = p1.x * p2.y - p1.y * p2.x;
+    float val2 = p3.x * p4.y - p3.y * p4.x;
+    float denom = (p1.x - p2.x) * (p3.y - p4.y) - (p1.y - p2.y) * (p3.x - p4.x);
+
+    float px = (val1 * (p3.x - p4.x) - (p1.x - p2.x) * val2) / denom;
+    float py = (val1 * (p3.y - p4.y) - (p1.y - p2.y) * val2) / denom;
+
+    return float2(px, py);
+}
+
+//Expands a triangle by moving all edges a distance outwards. The intersection points of the expanded edges are the vertices of the expanded triangle.
+// @param verts: the vertex positions of the triangle
+// @param s: the scale by how much to expand the edges. This scalar should be applied to the interpolated direction vector
+// @return the vertex positions of the expanded triangle
+void expandTriangle(float2 verts[3], float s, out float2 newVerts[3]) {
+    uint2 indices[3] = {uint2(0, 1), uint2(1, 2), uint2(2, 0)};
+
+    float2 ods[3]; //Outward directions
+    [unroll] for(int i = 0; i < 3; i++) {
+        float2 start = verts[indices[i].x]; //Start point of edge
+        float2 end = verts[indices[i].y]; //End point of edge
+
+        float dx = end.x - start.x;
+        float dy = end.y - start.y;
+
+        float2 outwardDirection = normalize(float2(dy, -dx));
+        ods[i] = s * outwardDirection;
+    }
+
+    newVerts[0] = intersect(verts[0] + ods[0], verts[1] + ods[0], verts[2] + ods[2], verts[0] + ods[2]);
+    newVerts[1] = intersect(verts[0] + ods[0], verts[1] + ods[0], verts[1] + ods[1], verts[2] + ods[1]);
+    newVerts[2] = intersect(verts[1] + ods[1], verts[2] + ods[1], verts[2] + ods[2], verts[0] + ods[2]);
+}
+
+//Creates a displaced triangle by moving the undisplaced vertex positions on the plane.
+//This is equivalent to unprojecting the vertices to 3D space, applying displacements, and projecting them back to the plane.
+// @param triVerts: the vertices of the triangle
+// @param directions: the displacement directions of the base triangle
+// @param dOffset: the displacement offset into the displacement buffer
+// @param p: the triangle's plane
+// @return the displaced vertex positions on the plane
+void createDisplacedTriangle(Vertex2D triVerts[3], float3 directions[3], int dOffset, out float2 displacedVerts[3], Plane p) {
+    [unroll] for(int i = 0; i < 3; i++) {
+    	float3 interpolDir = triVerts[i].bc.x * directions[0] + triVerts[i].bc.y * directions[1] + triVerts[i].bc.z * directions[2];
+        float disScale = getDisplacementScale(triVerts[i].coordinates, dOffset);
+
+        float3 displacement = disScale * interpolDir;
+        displacedVerts[i] = triVerts[i].position + float2(dot(displacement, p.T), dot(displacement, p.B));
+    }
 }
 
 bool rayIntersectsEdge(Ray2D ray, float2 start, float2 end, inout float t) {
@@ -207,7 +261,7 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, int minMaxOffset, Ray2D ray
 // @param ray: the ray in 2D
 // @param dOffset: the offset into a buffer that gets data for this triangle
 // @return an array of triangles that the ray crossed in order
-void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop) {
+void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop, float3 directions[3]) {
     /*
      * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v0
@@ -239,10 +293,10 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     int finalStartIndex = firstLocalIndexNxtLvl;
     int lvl = level;
     for(int i = 0; i < t.pathCount; i++) {
-        int p = t.path[i];
+        int path = t.path[i];
         int unit = 1U << (2 * lvl);
 
-        finalStartIndex += p * unit;
+        finalStartIndex += path * unit;
 
         lvl--;
     }
@@ -266,7 +320,13 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     [unroll] for(int i = 0; i < 4; i++) {
         float3 ts = {-1, -1, -1};
 
-        if(rayIntersectTriangle(prismPlaneCorners[boundingTriIndices[i]], ray, ts) && !isOutsideDisplacementRegion(ts, p, boundingTriIndices[i], ray)) {
+        float2 vPositions[3];
+        Vertex2D triVerts[3] = {subTriV0[i], subTriV1[i], subTriV2[i]};
+    	createDisplacedTriangle(triVerts, directions, dOffset, vPositions, p);
+        float2 boundingTriVerts[3]; //Prism corners
+    	expandTriangle(vPositions, deltas[boundingTriIndices[i]], boundingTriVerts);
+
+        if(rayIntersectTriangle(boundingTriVerts, ray, ts) && !isOutsideDisplacementRegion(ts, p, boundingTriIndices[i], ray)) {
             float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
 
             Triangle2D newT = {{subTriV0[i], subTriV1[i], subTriV2[i]}, t.path, t.pathCount + 1, entryT, boundingTriIndices[i]};
@@ -333,29 +393,27 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int
         StackElement current = stack[--stackTop];
 
         if(current.level == subDivLvl) { //Base case. Raytrace micro triangles directly
-            float2 vertices[3] = prismPlaneCorners[current.tri.hierarchicalIndex];
-
             float3 interpolatedDirections[3] = {
             	current.tri.vertices[0].bc.x * directions[0] + current.tri.vertices[0].bc.y * directions[1] + current.tri.vertices[0].bc.z * directions[2],
                 current.tri.vertices[1].bc.x * directions[0] + current.tri.vertices[1].bc.y * directions[1] + current.tri.vertices[1].bc.z * directions[2],
                 current.tri.vertices[2].bc.x * directions[0] + current.tri.vertices[2].bc.y * directions[1] + current.tri.vertices[2].bc.z * directions[2]
             };
 
-            float heights[3] = {
-                dot(getDisplacementScale(current.tri.vertices[0].coordinates, dOffset) * interpolatedDirections[0], p.N),
-                dot(getDisplacementScale(current.tri.vertices[1].coordinates, dOffset) * interpolatedDirections[1], p.N),
-                dot(getDisplacementScale(current.tri.vertices[2].coordinates, dOffset) * interpolatedDirections[2], p.N)
+            float scalars[3] = {
+                getDisplacementScale(current.tri.vertices[0].coordinates, dOffset),
+                getDisplacementScale(current.tri.vertices[1].coordinates, dOffset),
+                getDisplacementScale(current.tri.vertices[2].coordinates, dOffset)
             };
 
             float3 vs3D[3] = {
-                p.unproject(vertices[0], heights[0]),
-                p.unproject(vertices[1], heights[1]),
-                p.unproject(vertices[2], heights[2])
+                p.unproject(current.tri.vertices[0].position, 0) + scalars[0] * interpolatedDirections[0],
+                p.unproject(current.tri.vertices[1].position, 0) + scalars[1] * interpolatedDirections[1],
+                p.unproject(current.tri.vertices[2].position, 0) + scalars[2] * interpolatedDirections[2]
             };
 
             if(rayTraceTriangle(vs3D[0], vs3D[1], vs3D[2])) return; //Ray hits triangle, so we can stop searching
         } else {
-            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, stack, stackTop);
+            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, stack, stackTop, directions);
         }
     }
 }
@@ -370,12 +428,6 @@ void main() {
     float2 v0GridCoordinate = float2(0, 0);
     float2 v1GridCoordinate = float2(tData.nRows - 1, 0);
     float2 v2GridCoordinate = float2(tData.nRows - 1, tData.nRows - 1);
-
-    float2 prismCorners[3] = prismPlaneCorners[tData.minMaxOffset]; //Prism corners
-
-    Vertex2D prismCornerV0 = {prismCorners[0], 0, v0GridCoordinate};
-    Vertex2D prismCornerV1 = {prismCorners[1], 0, v1GridCoordinate};
-    Vertex2D prismCornerV2 = {prismCorners[2], 0, v2GridCoordinate};
 
     /*
      * Creation of plane
@@ -392,12 +444,22 @@ void main() {
     /*
 	 * Creation of 2D triangle
 	 */
-    Vertex2D v0Proj = {float3(1, 0, 0), v0GridCoordinate};
-    Vertex2D v1Proj = {float3(0, 1, 0), v1GridCoordinate};
-    Vertex2D v2Proj = {float3(0, 0, 1), v2GridCoordinate};
+    Vertex2D v0Proj = {p.projectOnto(v0.position).xy, float3(1, 0, 0), v0GridCoordinate};
+    Vertex2D v1Proj = {p.projectOnto(v1.position).xy, float3(0, 1, 0), v1GridCoordinate};
+    Vertex2D v2Proj = {p.projectOnto(v2.position).xy, float3(0, 0, 1), v2GridCoordinate};
 
     int path[5];
     Triangle2D t = {{v0Proj, v1Proj, v2Proj}, path, 0, -1, tData.minMaxOffset};
+
+    /*
+     * Compute bounding triangle of base triangle
+     */
+    float3 directions[3] = {v0.direction, v1.direction, v2.direction};
+
+    float2 vPositions[3];
+    createDisplacedTriangle(t.vertices, directions, tData.displacementOffset, vPositions, p);
+    float2 prismCorners[3];
+    expandTriangle(vPositions, deltas[tData.minMaxOffset], prismCorners);
 
     /*
  	 * Creation of 2D ray
@@ -422,9 +484,9 @@ void main() {
     };
 
     EdgeHitInfo baseEdges[3] = {
-        {{prismCorners[0], prismCorners[1]}, -1, false},
-        {{prismCorners[1], prismCorners[2]}, -1, false},
-        {{prismCorners[2], prismCorners[0]}, -1, false}
+        {prismCorners[0], prismCorners[1], -1, false},
+        {prismCorners[1], prismCorners[2], -1, false},
+        {prismCorners[2], prismCorners[0], -1, false}
     };
 
     [unroll] for(int i = 0; i < 3; i++) {
@@ -437,6 +499,5 @@ void main() {
 
     if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, tData.minMaxOffset, ray)) return;
 
-    float3 directions[3] = {v0.direction, v1.direction, v2.direction};
 	rayTraceMMTriangle(t, ray, p, tData.displacementOffset, tData.minMaxOffset, directions);
 }

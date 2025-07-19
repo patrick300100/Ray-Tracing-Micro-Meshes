@@ -69,7 +69,7 @@ public:
         CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
         cw.reset();
 
-        // //Creating ray tracing shader
+        //Creating ray tracing shader
         {
             rtShader = RayTraceShader(
                RESOURCE_ROOT L"shaders/raygen.hlsl",
@@ -139,11 +139,11 @@ public:
 
             std::vector<int> allOffsets;
             std::ranges::transform(tData, std::back_inserter(allOffsets), [&](const TriangleData& td) { return td.displacementOffset; });
-            const auto newCorners = cpuMesh.boundingTriangles(allOffsets);
+            const auto deltas = cpuMesh.boundingTriangles(allOffsets);
 
-            prismCornersBuffer = DefaultBuffer<Triangle2DOnlyPos>(device, newCorners.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            prismCornersBuffer.upload(newCorners, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<Triangle2DOnlyPos>(prismCornersBuffer.getBuffer());
+            deltaBuffer = DefaultBuffer<float>(device, deltas.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            deltaBuffer.upload(deltas, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<float>(deltaBuffer.getBuffer());
 
 
             //Creating output texture
@@ -366,7 +366,7 @@ private:
     DefaultBuffer<float> planePositionsBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
-    DefaultBuffer<Triangle2DOnlyPos> prismCornersBuffer;
+    DefaultBuffer<float> deltaBuffer;
 
     void menu() {
         ImGui::Begin("Window");
