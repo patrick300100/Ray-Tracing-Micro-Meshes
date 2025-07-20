@@ -152,7 +152,8 @@ float2 intersect(float2 p1, float2 p2, float2 p3, float2 p4) {
 // @param verts: the vertex positions of the triangle
 // @param s: the scale by how much to expand the edges. This scalar should be applied to the interpolated direction vector
 // @return the vertex positions of the expanded triangle
-void expandTriangle(float2 verts[3], float s, out float2 newVerts[3]) {
+float3x2 expandTriangle(float3x2 verts, float s) {
+    float3x2 newVerts;
     uint2 indices[3] = {uint2(0, 1), uint2(1, 2), uint2(2, 0)};
 
     float2 ods[3]; //Outward directions
@@ -170,6 +171,8 @@ void expandTriangle(float2 verts[3], float s, out float2 newVerts[3]) {
     newVerts[0] = intersect(verts[0] + ods[0], verts[1] + ods[0], verts[2] + ods[2], verts[0] + ods[2]);
     newVerts[1] = intersect(verts[0] + ods[0], verts[1] + ods[0], verts[1] + ods[1], verts[2] + ods[1]);
     newVerts[2] = intersect(verts[1] + ods[1], verts[2] + ods[1], verts[2] + ods[2], verts[0] + ods[2]);
+
+    return newVerts;
 }
 
 //Computes the displacement vector of a micro-vertex.
@@ -191,11 +194,15 @@ float3 computeDisplacement(Vertex2D v, float3 directions[3], int dOffset) {
 // @param dOffset: the displacement offset into the displacement buffer
 // @param p: the triangle's plane
 // @return the displaced vertex positions on the plane
-void createDisplacedTriangle(Vertex2D triVerts[3], float3 directions[3], int dOffset, out float2 displacedVerts[3], Plane p) {
+float3x2 createDisplacedTriangle(Vertex2D triVerts[3], float3 directions[3], int dOffset, Plane p) {
+    float3x2 displacedVerts;
+
     [unroll] for(int i = 0; i < 3; i++) {
         float3 displacement = computeDisplacement(triVerts[i], directions, dOffset);
         displacedVerts[i] = triVerts[i].position + float2(dot(displacement, p.T), dot(displacement, p.B));
     }
+
+    return displacedVerts;
 }
 
 bool rayIntersectsEdge(Ray2D ray, float2 start, float2 end, inout float t) {
@@ -243,7 +250,7 @@ void sort(inout StackElement stack[MAX_STACK_DEPTH], int startIndex, int count) 
 // @param ray: the ray in 2D
 // @param ts: an 'array' of t's (one for each edge) that will hold the ray parameter t in case the ray hits the edge
 // @return true if the triangle was hit, false if not. It will also return the intersection point in terms of the ray parameter `t` for each edge that was hit
-bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float3 ts) {
+bool rayIntersectTriangle(float3x2 vertices, Ray2D ray, inout float3 ts) {
     bool intersect1 = rayIntersectsEdge(ray, vertices[0], vertices[1], ts[0]);
     bool intersect2 = rayIntersectsEdge(ray, vertices[1], vertices[2], ts[1]);
     bool intersect3 = rayIntersectsEdge(ray, vertices[2], vertices[0], ts[2]);
@@ -329,10 +336,9 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     [unroll] for(int i = 0; i < 4; i++) {
         float3 ts = {-1, -1, -1};
 
-        float2 vPositions[3];
         Vertex2D triVerts[3] = {subTriV0[i], subTriV1[i], subTriV2[i]};
-        float2 boundingTriVerts[3]; //Prism corners
-        createDisplacedTriangle(triVerts, directions, dOffset, vPositions, p);
+        float3x2 boundingTriVerts;
+        float3x2 vPositions = createDisplacedTriangle(triVerts, directions, dOffset, p);
         float2 minMaxDispl = float2(MAX_FLOAT, -MAX_FLOAT);
         if(level + 1 == subDivLvl) {
             boundingTriVerts = vPositions;
@@ -345,7 +351,7 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
                 minMaxDispl.y = max(minMaxDispl.y, height);
             }
         } else {
-    		expandTriangle(vPositions, deltas[boundingTriIndices[i]], boundingTriVerts);
+    		boundingTriVerts = expandTriangle(vPositions, deltas[boundingTriIndices[i]]);
             minMaxDispl = minMaxDisplacements[boundingTriIndices[i]];
         }
 
@@ -467,10 +473,8 @@ void main() {
      */
     float3 directions[3] = {v0.direction, v1.direction, v2.direction};
 
-    float2 vPositions[3];
-    createDisplacedTriangle(t.vertices, directions, tData.displacementOffset, vPositions, p);
-    float2 prismCorners[3];
-    expandTriangle(vPositions, deltas[tData.minMaxOffset], prismCorners);
+    float3x2 vPositions = createDisplacedTriangle(t.vertices, directions, tData.displacementOffset, p);
+    float3x2 boundingTriVerts = expandTriangle(vPositions, deltas[tData.minMaxOffset]);
 
     /*
  	 * Creation of 2D ray
@@ -495,9 +499,9 @@ void main() {
     };
 
     EdgeHitInfo baseEdges[3] = {
-        {prismCorners[0], prismCorners[1], -1, false},
-        {prismCorners[1], prismCorners[2], -1, false},
-        {prismCorners[2], prismCorners[0], -1, false}
+        {boundingTriVerts[0], boundingTriVerts[1], -1, false},
+        {boundingTriVerts[1], boundingTriVerts[2], -1, false},
+        {boundingTriVerts[2], boundingTriVerts[0], -1, false}
     };
 
     [unroll] for(int i = 0; i < 3; i++) {
