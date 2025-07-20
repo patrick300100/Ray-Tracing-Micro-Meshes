@@ -95,7 +95,7 @@ public:
             const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(offsets);
 
             try {
-                if(offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
+                if(offsets.size() != 0 && offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
                 for(int i = 0; i < offsets.size(); i++) {
                     tData[i].minMaxOffset = offsets[i];
                 }
