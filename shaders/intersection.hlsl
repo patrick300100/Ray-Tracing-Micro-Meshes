@@ -27,6 +27,7 @@ struct Plane {
 struct TriangleData {
     uint3 vIndices;
     int nRows; //Number of micro vertices on the base edge of the triangle
+    uint subDivLvl;
     int displacementOffset; //Offset into the displacement buffer from where displacements for this triangle starts
     int minMaxOffset;
 };
@@ -96,10 +97,6 @@ struct Triangle2D {
 struct StackElement {
     Triangle2D tri;
     int level;
-};
-
-cbuffer meshData : register(b1) {
-    uint subDivLvl;
 };
 
 StructuredBuffer<InputVertex> vertices : register(t1);
@@ -276,8 +273,9 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, Ray2D ray, float2 minMaxDis
 // @param t: the triangle that should be tested for ray intersection
 // @param ray: the ray in 2D
 // @param dOffset: the offset into a buffer that gets data for this triangle
+// @param subDivLvl: the subdivision level of the triangle
 // @return an array of triangles that the ray crossed in order
-void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop, float3 directions[3]) {
+void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOffset, int level, Plane p, inout StackElement stack[MAX_STACK_DEPTH], inout int stackTop, float3 directions[3], int subDivLvl) {
     /*
      * We have our triangle t defined by vertices v0-v1-v2 and we are going to subdivide like so:
      *       v0
@@ -409,8 +407,9 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 // @param p: the plane of the triangle
 // @param dOffset: offset into the displacement buffer for this triangle
 // @param minMaxOffset: offset into the minmax buffer for this triangle
+// @param subDivLvl: the subdivision level of the triangle
 // @param directions: the directions of the 3 base vertices
-void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int minMaxOffset, float3 directions[3]) {
+void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int minMaxOffset, int subDivLvl, float3 directions[3]) {
     //Creating and populating the stack
     StackElement stack[MAX_STACK_DEPTH];
     int stackTop = 0;
@@ -430,7 +429,7 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int
 
             if(rayTraceTriangle(vs3D[0], vs3D[1], vs3D[2])) return; //Ray hits triangle, so we can stop searching
         } else {
-            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, stack, stackTop, directions);
+            addIntersectedTriangles(current.tri, ray, dOffset, minMaxOffset, current.level, p, stack, stackTop, directions, subDivLvl);
         }
     }
 }
@@ -514,5 +513,5 @@ void main() {
 
     if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, ray, minMaxDisplacements[tData.minMaxOffset])) return;
 
-	rayTraceMMTriangle(t, ray, p, tData.displacementOffset, tData.minMaxOffset, directions);
+	rayTraceMMTriangle(t, ray, p, tData.displacementOffset, tData.minMaxOffset, tData.subDivLvl, directions);
 }
