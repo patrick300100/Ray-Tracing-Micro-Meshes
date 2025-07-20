@@ -179,6 +179,17 @@ int Mesh::subdivisionLevel() const {
 std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) const {
     std::vector<glm::vec2> minMaxDisplacements;
 
+    /**
+     * If we have subdivision level 0, we do not need to store any min-max displacements.
+     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
+     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
+     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
+     */
+    if(subdivisionLevel() == 0) {
+        minMaxDisplacements.emplace_back(0, 0);
+        return minMaxDisplacements;
+    }
+
     struct TriangleElement {
         std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
         glm::vec3 v0, v1, v2; //Corner vertices
@@ -217,7 +228,7 @@ std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) cons
 
             minMaxDisplacements.emplace_back(minDisplacement, maxDisplacement);
 
-            if(currentTriangle.uTriangles.size() != 1) {
+            if(currentTriangle.uTriangles.size() > 4) {
                 //Now we compute the next 4 triangles for processing
                 glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
                 glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
@@ -322,7 +333,20 @@ float computeTriangleDelta(const Triangle2D& t, const std::unordered_set<glm::ve
     return maxDistance;
 }
 
-std::vector<float> Mesh::boundingTriangles(const std::vector<int>& dOffsets) const {
+std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const {
+    std::vector<float> boundTriangles;
+
+    /**
+     * If we have subdivision level 0, we do not need to store any delta values.
+     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
+     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
+     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
+     */
+    if(subdivisionLevel() == 0) {
+        boundTriangles.push_back(0.0f);
+        return boundTriangles;
+    }
+
     std::vector<glm::vec3> positions2D;
     for(const auto& triangle : triangles) {
         //Compute plane positions of each micro vertex
@@ -340,8 +364,6 @@ std::vector<float> Mesh::boundingTriangles(const std::vector<int>& dOffsets) con
         TBNPlane::Plane plane(T, B, N, v0.position);
         std::ranges::transform(triangle.uVertices, std::back_inserter(positions2D), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
     }
-
-    std::vector<float> boundTriangles;
 
     struct TriangleElement {
         std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
@@ -380,7 +402,7 @@ std::vector<float> Mesh::boundingTriangles(const std::vector<int>& dOffsets) con
             boundTriangles.emplace_back(delta);
 
             //Add next elements to queue
-            if(currentTriangle.uTriangles.size() != 1) {
+            if(currentTriangle.uTriangles.size() > 4) {
                 //Now we divide all micro triangles into the 4 regions (after a bunch of data computation...)
                 glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
                 glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;

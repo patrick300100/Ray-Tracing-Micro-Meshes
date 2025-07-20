@@ -120,18 +120,22 @@ public:
             std::vector<int> offsets;
             const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(offsets);
 
-            if(offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
-            for(int i = 0; i < offsets.size(); i++) {
-                tData[i].minMaxOffset = offsets[i];
+            try {
+                if(offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
+                for(int i = 0; i < offsets.size(); i++) {
+                    tData[i].minMaxOffset = offsets[i];
+                }
+            } catch(const std::exception& e) {
+                std::cerr << e.what() << std::endl;
             }
 
             triangleData = DefaultBuffer<TriangleData>(device, tData.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             triangleData.upload(tData, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<TriangleData>(triangleData.getBuffer());
 
-            planePositionsBuffer = DefaultBuffer<float>(device, displacementScales.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            planePositionsBuffer.upload(displacementScales, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<float>(planePositionsBuffer.getBuffer());
+            displacementScalesBuffer = DefaultBuffer<float>(device, displacementScales.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            displacementScalesBuffer.upload(displacementScales, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<float>(displacementScalesBuffer.getBuffer());
 
             minMaxDisplacementBuffer = DefaultBuffer<glm::vec2>(device, minMaxDisplacements.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             minMaxDisplacementBuffer.upload(minMaxDisplacements, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -139,7 +143,7 @@ public:
 
             std::vector<int> allOffsets;
             std::ranges::transform(tData, std::back_inserter(allOffsets), [&](const TriangleData& td) { return td.displacementOffset; });
-            const auto deltas = cpuMesh.boundingTriangles(allOffsets);
+            const auto deltas = cpuMesh.triangleDeltas(allOffsets);
 
             deltaBuffer = DefaultBuffer<float>(device, deltas.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             deltaBuffer.upload(deltas, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -363,7 +367,7 @@ private:
     UploadBuffer<glm::mat4> invViewProjBuffer;
     UploadBuffer<int> meshDataBuffer;
     DefaultBuffer<TriangleData> triangleData;
-    DefaultBuffer<float> planePositionsBuffer;
+    DefaultBuffer<float> displacementScalesBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<float> deltaBuffer;

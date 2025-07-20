@@ -73,7 +73,7 @@ public:
 	//Compute delta for each hierarchical triangle in 2D. Delta represents a scalar by how much to expand the edges to include micro-vertices of future subdivision levels.
 	//So if we have a displaced triangle, and we project it onto the base triangle's plane, we compute 3 vertex positions that bounds all micro-vertices in that triangle (also that of
 	//future subdivision levels).
-	//We return a vector that contains deltas hierarchically. So if a triangle has subdivision level 1, a total of 5 deltas will be made for a single triangle.
-	//One delta for level 0, and four deltas for level 1.
-	[[nodiscard]] std::vector<float> boundingTriangles(const std::vector<int>& dOffsets) const;
+	//We return a vector that contains deltas hierarchically, but do not store the lowest subdivision level. So if a triangle has subdivision level 2, a total of 5 deltas will be
+	//made for a single triangle. One delta for level 0, and four deltas for level 1.
+	[[nodiscard]] std::vector<float> triangleDeltas(const std::vector<int>& dOffsets) const;
 };

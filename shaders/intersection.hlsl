@@ -109,6 +109,7 @@ StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarc
 StructuredBuffer<float> deltas : register(t5);
 
 static const int MAX_STACK_DEPTH = 256; //Should be enough
+static const float MAX_FLOAT = 3.402823466e+38f;
 static const float MAX_T = 100000.0f; //Should coincide (or be higher) with the ray.TMax in ray generation
 
 //Projects a position onto the plane defined by T and B
@@ -171,6 +172,18 @@ void expandTriangle(float2 verts[3], float s, out float2 newVerts[3]) {
     newVerts[2] = intersect(verts[1] + ods[1], verts[2] + ods[1], verts[2] + ods[2], verts[0] + ods[2]);
 }
 
+//Computes the displacement vector of a micro-vertex.
+// @param v: the micro-vertex
+// @param directions: the directions of the base vertices
+// @param dOffset: the displacement offset into the displacement buffer
+// @return the displacement vector of the micro-vertex.
+float3 computeDisplacement(Vertex2D v, float3 directions[3], int dOffset) {
+    float3 interpolDir = v.bc.x * directions[0] + v.bc.y * directions[1] + v.bc.z * directions[2];
+    float disScale = getDisplacementScale(v.coordinates, dOffset);
+
+    return disScale * interpolDir;
+}
+
 //Creates a displaced triangle by moving the undisplaced vertex positions on the plane.
 //This is equivalent to unprojecting the vertices to 3D space, applying displacements, and projecting them back to the plane.
 // @param triVerts: the vertices of the triangle
@@ -180,10 +193,7 @@ void expandTriangle(float2 verts[3], float s, out float2 newVerts[3]) {
 // @return the displaced vertex positions on the plane
 void createDisplacedTriangle(Vertex2D triVerts[3], float3 directions[3], int dOffset, out float2 displacedVerts[3], Plane p) {
     [unroll] for(int i = 0; i < 3; i++) {
-    	float3 interpolDir = triVerts[i].bc.x * directions[0] + triVerts[i].bc.y * directions[1] + triVerts[i].bc.z * directions[2];
-        float disScale = getDisplacementScale(triVerts[i].coordinates, dOffset);
-
-        float3 displacement = disScale * interpolDir;
+        float3 displacement = computeDisplacement(triVerts[i], directions, dOffset);
         displacedVerts[i] = triVerts[i].position + float2(dot(displacement, p.T), dot(displacement, p.B));
     }
 }
@@ -241,7 +251,7 @@ bool rayIntersectTriangle(float2 vertices[3], Ray2D ray, inout float3 ts) {
     return intersect1 || intersect2 || intersect3;
 }
 
-bool isOutsideDisplacementRegion(float3 ts, Plane p, int minMaxOffset, Ray2D ray) {
+bool isOutsideDisplacementRegion(float3 ts, Plane p, Ray2D ray, float2 minMaxDispl) {
     float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
     float exitT = max(ts[0], max(ts[1], ts[2]));
 
@@ -252,7 +262,6 @@ bool isOutsideDisplacementRegion(float3 ts, Plane p, int minMaxOffset, Ray2D ray
     float heightEntry = ray.heightTo3DRay(entryT, p);
     float heightExit = ray.heightTo3DRay(exitT, p);
 
-    float2 minMaxDispl = minMaxDisplacements[minMaxOffset];
     return (heightEntry < minMaxDispl.x && heightExit < minMaxDispl.x) || (heightEntry > minMaxDispl.y && heightExit > minMaxDispl.y);
 }
 
@@ -322,11 +331,25 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
 
         float2 vPositions[3];
         Vertex2D triVerts[3] = {subTriV0[i], subTriV1[i], subTriV2[i]};
-    	createDisplacedTriangle(triVerts, directions, dOffset, vPositions, p);
         float2 boundingTriVerts[3]; //Prism corners
-    	expandTriangle(vPositions, deltas[boundingTriIndices[i]], boundingTriVerts);
+        createDisplacedTriangle(triVerts, directions, dOffset, vPositions, p);
+        float2 minMaxDispl = float2(MAX_FLOAT, -MAX_FLOAT);
+        if(level + 1 == subDivLvl) {
+            boundingTriVerts = vPositions;
 
-        if(rayIntersectTriangle(boundingTriVerts, ray, ts) && !isOutsideDisplacementRegion(ts, p, boundingTriIndices[i], ray)) {
+            [unroll] for(int j = 0; j < 3; j++) {
+                float3 displacement = computeDisplacement(triVerts[j], directions, dOffset);
+                float height = dot(displacement, p.N);
+
+                minMaxDispl.x = min(minMaxDispl.x, height);
+                minMaxDispl.y = max(minMaxDispl.y, height);
+            }
+        } else {
+    		expandTriangle(vPositions, deltas[boundingTriIndices[i]], boundingTriVerts);
+            minMaxDispl = minMaxDisplacements[boundingTriIndices[i]];
+        }
+
+        if(rayIntersectTriangle(boundingTriVerts, ray, ts) && !isOutsideDisplacementRegion(ts, p, ray, minMaxDispl)) {
             float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
 
             Triangle2D newT = {{subTriV0[i], subTriV1[i], subTriV2[i]}, t.path, t.pathCount + 1, entryT, boundingTriIndices[i]};
@@ -393,22 +416,10 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int
         StackElement current = stack[--stackTop];
 
         if(current.level == subDivLvl) { //Base case. Raytrace micro triangles directly
-            float3 interpolatedDirections[3] = {
-            	current.tri.vertices[0].bc.x * directions[0] + current.tri.vertices[0].bc.y * directions[1] + current.tri.vertices[0].bc.z * directions[2],
-                current.tri.vertices[1].bc.x * directions[0] + current.tri.vertices[1].bc.y * directions[1] + current.tri.vertices[1].bc.z * directions[2],
-                current.tri.vertices[2].bc.x * directions[0] + current.tri.vertices[2].bc.y * directions[1] + current.tri.vertices[2].bc.z * directions[2]
-            };
-
-            float scalars[3] = {
-                getDisplacementScale(current.tri.vertices[0].coordinates, dOffset),
-                getDisplacementScale(current.tri.vertices[1].coordinates, dOffset),
-                getDisplacementScale(current.tri.vertices[2].coordinates, dOffset)
-            };
-
             float3 vs3D[3] = {
-                p.unproject(current.tri.vertices[0].position, 0) + scalars[0] * interpolatedDirections[0],
-                p.unproject(current.tri.vertices[1].position, 0) + scalars[1] * interpolatedDirections[1],
-                p.unproject(current.tri.vertices[2].position, 0) + scalars[2] * interpolatedDirections[2]
+                p.unproject(current.tri.vertices[0].position, 0) + computeDisplacement(current.tri.vertices[0], directions, dOffset),
+                p.unproject(current.tri.vertices[1].position, 0) + computeDisplacement(current.tri.vertices[1], directions, dOffset),
+                p.unproject(current.tri.vertices[2].position, 0) + computeDisplacement(current.tri.vertices[2], directions, dOffset)
             };
 
             if(rayTraceTriangle(vs3D[0], vs3D[1], vs3D[2])) return; //Ray hits triangle, so we can stop searching
@@ -497,7 +508,7 @@ void main() {
 
     if(!baseEdges[0].intersect && !baseEdges[1].intersect && !baseEdges[2].intersect) return;
 
-    if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, tData.minMaxOffset, ray)) return;
+    if(isOutsideDisplacementRegion(float3(baseEdges[0].rayT, baseEdges[1].rayT, baseEdges[2].rayT), p, ray, minMaxDisplacements[tData.minMaxOffset])) return;
 
 	rayTraceMMTriangle(t, ray, p, tData.displacementOffset, tData.minMaxOffset, directions);
 }
