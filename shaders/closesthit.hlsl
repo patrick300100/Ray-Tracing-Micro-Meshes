@@ -66,19 +66,23 @@ void main(inout Payload payload, in Attributes attribs) {
     float3 F0 = float3(0.04f, 0.04f, 0.04f);
     F0 = lerp(F0, albedo, metallic);
 
-    float3 lightDirs[2] = {
+    float3 lightDirs[4] = {
         float3(0.0f, 0.0f, 1.0f),
-        float3(0.0f, 1.0f, 0.0f)
+        float3(0.0f, 1.0f, 0.0f),
+        float3(0.0f, 0.0f, -1.0f),
+        float3(0.0f, -1.0f, 0.0f)
     };
 
-    float intensities[2] = {
+    float intensities[4] = {
+        lightIntensity,
+        lightIntensity / 2.0f,
         lightIntensity,
         lightIntensity / 2.0f
     };
 
     // reflectance equation
     float3 Lo = float3(0.0f, 0.0f, 0.0f);
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 4; ++i) {
         // calculate per-light radiance
         float3 L = normalize(lightDirs[i]);
         float3 H = normalize(V + L);
