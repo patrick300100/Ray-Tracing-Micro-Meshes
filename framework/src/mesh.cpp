@@ -4,8 +4,7 @@
 #include <unordered_map>
 #include <queue>
 #include <unordered_set>
-#include <opencv2/core.hpp>
-#include <opencv2/imgproc.hpp>
+#include "../../src/Plane.h"
 
 struct VertexHash {
     size_t operator()(const Vertex& v) const {
@@ -180,6 +179,17 @@ int Mesh::subdivisionLevel() const {
 std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) const {
     std::vector<glm::vec2> minMaxDisplacements;
 
+    /**
+     * If we have subdivision level 0, we do not need to store any min-max displacements.
+     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
+     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
+     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
+     */
+    if(subdivisionLevel() == 0) {
+        minMaxDisplacements.emplace_back(0, 0);
+        return minMaxDisplacements;
+    }
+
     struct TriangleElement {
         std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
         glm::vec3 v0, v1, v2; //Corner vertices
@@ -218,7 +228,7 @@ std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) cons
 
             minMaxDisplacements.emplace_back(minDisplacement, maxDisplacement);
 
-            if(currentTriangle.uTriangles.size() != 1) {
+            if(currentTriangle.uTriangles.size() > 4) {
                 //Now we compute the next 4 triangles for processing
                 glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
                 glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;
@@ -272,28 +282,6 @@ float distPointToEdge(const glm::vec2& p, const Edge2D& e) {
     return glm::length(p - closest);
 }
 
-struct Line {
-    double a, b; //Linear line y = ax + b
-
-    //Returns the intersection point of this line with another line
-    [[nodiscard]] glm::vec2 intersect(const Line& other) const {
-        double x = (other.b - b) / (a - other.a);
-        double y = a * x + b;
-        return {x, y};
-    }
-};
-
-//Computes a line through p0 and p1, and then translates the line to go through p2 (i.e., same slope as the line from p0 to p1)
-Line computeTranslatedLine(const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2) {
-    double dx = p1.x - p0.x;
-    double dy = p1.y - p0.y;
-    double a = dy / dx;
-
-    double b = p2.y - a * p2.x;
-
-    return {a, b};
-}
-
 //Hash function for glm::vec2's.
 //This hash function only works for float values which come 'from the same source'.
 //
@@ -309,66 +297,73 @@ struct std::hash<glm::vec2> {
 };
 
 /**
- * Creates a binding triangle around a set of points.
+ * Computes the maximum distance for a triangle that includes all micro-vertices.
  *
- * We use OpenCV's implementation to find the smallest triangle that encapsulates all points. Sometimes this fails, if the points
- * are too close to each other. In that case, we fall back to edge-expansion.
+ * Given a triangle, future subdivision levels can lie outside the triangle. We compute delta, which specifies how much
+ * to expand the edges of the current subdivision level's triangle to also include micro-vertices of future subdivision
+ * levels.
  *
- * Edge expansion means that we, given the 3 edges of a 'reference' triangle, for each edge, look for the most outer point
- * (the point that is the farthest away from that edge, and on the outside of the reference triangle). Then we expand that
- * edge so that that point is also contained in the reference triangle.
- *
- * @param t the 'reference' triangle (see method description)
- * @param points the points that need to be encanspulated
- * @return the 3 corner vertices of the triangle that encapsulates all points
+ * @param t a triangle
+ * @param points the points that need to be encapsulated
+ * @return a delta, which specifies by how much to expand the triangle's edges to encapsulate all points
  */
-Triangle2DOnlyPos createBindTriangle(const Triangle2D& t, const std::unordered_set<glm::vec2>& points) {
-    try {
-        std::vector<cv::Point2f> cvPoints;
-        cvPoints.reserve(points.size());
+float computeTriangleDelta(const Triangle2D& t, const std::unordered_set<glm::vec2>& points) {
+    const auto v0 = t.v0;
+    const auto v1 = t.v1;
+    const auto v2 = t.v2;
 
-        for (const auto& p : points) {
-            cvPoints.emplace_back(p.x, p.y);
-        }
+    const bool isCCW = t.isCCW();
 
-        std::vector<cv::Point2f> triangle;
-        cv::minEnclosingTriangle(cvPoints, triangle);
+    const std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
+    std::vector vertices{v0, v1, v2};
 
-        return { {triangle.at(0).x, triangle.at(0).y}, {triangle.at(1).x, triangle.at(1).y}, {triangle.at(2).x, triangle.at(2).y} };
-    } catch (const std::exception& ex) {
-        const auto v0 = t.v0;
-        const auto v1 = t.v1;
-        const auto v2 = t.v2;
-
-        const bool isCCW = t.isCCW();
-
-        const std::vector<Edge2D> edges{ {v0, v1}, {v1, v2}, {v2, v0} };
-        std::vector vertices{v0, v1, v2};
+    float maxDistance = 0.0f;
+    for(int i = 0; i < 3; i++) {
+        const auto& e = edges[i];
 
         for(const auto& p : points) {
-            for(int i = 0; i < 3; i++) {
-                float maxDistance = 0.0f;
-                const auto& e = edges[i];
-
-                const float dist = distPointToEdge(p, e);
-                const bool isOutsideTriangle = isCCW ? e.isRight(p) : e.isLeft(p); //Checks if a point is on the outside-side of the edge
-                if(isOutsideTriangle && dist > maxDistance) {
-                    maxDistance = dist;
-                    vertices[i] = {p, {-1, -1}};
-                }
+            const float dist = distPointToEdge(p, e);
+            const bool isOutsideTriangle = isCCW ? e.isRight(p) : e.isLeft(p); //Checks if a point is on the outside-side of the edge
+            if(isOutsideTriangle && dist > maxDistance) {
+                maxDistance = dist;
             }
         }
-
-        const auto lv0v1 = computeTranslatedLine(v0.position, v1.position, vertices[0].position);
-        const auto lv1v2 = computeTranslatedLine(v1.position, v2.position, vertices[1].position);
-        const auto lv0v2 = computeTranslatedLine(v0.position, v2.position, vertices[2].position);
-
-        return {lv0v1.intersect(lv0v2), lv0v1.intersect(lv1v2), lv0v2.intersect(lv1v2)};
     }
+
+    return maxDistance;
 }
 
-std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<glm::vec3>& positions2D, const std::vector<int>& dOffsets) const {
-    std::vector<Triangle2DOnlyPos> boundTriangles;
+std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const {
+    std::vector<float> boundTriangles;
+
+    /**
+     * If we have subdivision level 0, we do not need to store any delta values.
+     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
+     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
+     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
+     */
+    if(subdivisionLevel() == 0) {
+        boundTriangles.push_back(0.0f);
+        return boundTriangles;
+    }
+
+    std::vector<glm::vec3> positions2D;
+    for(const auto& triangle : triangles) {
+        //Compute plane positions of each micro vertex
+        const auto v0 = vertices[triangle.baseVertexIndices.x];
+        const auto v1 = vertices[triangle.baseVertexIndices.y];
+        const auto v2 = vertices[triangle.baseVertexIndices.z];
+
+        glm::vec3 e1 = v1.position - v0.position;
+        glm::vec3 e2 = v2.position - v0.position;
+        glm::vec3 N = glm::normalize(cross(e1, e2)); // plane normal
+
+        glm::vec3 T = normalize(e1);
+        glm::vec3 B = glm::normalize(cross(N, T));
+
+        TBNPlane::Plane plane(T, B, N, v0.position);
+        std::ranges::transform(triangle.uVertices, std::back_inserter(positions2D), [&](const uVertex& uv) { return plane.projectOnto(uv.position + uv.displacement); });
+    }
 
     struct TriangleElement {
         std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
@@ -403,11 +398,11 @@ std::vector<Triangle2DOnlyPos> Mesh::boundingTriangles(const std::vector<glm::ve
                 allPoints.insert(positions2D[dOffset + uf.y]);
                 allPoints.insert(positions2D[dOffset + uf.z]);
             }
-            const auto boundVs = createBindTriangle(currentTriangle.t2D, allPoints);
-            boundTriangles.emplace_back(boundVs.v0, boundVs.v1, boundVs.v2);
+            const auto delta = computeTriangleDelta(currentTriangle.t2D, allPoints);
+            boundTriangles.emplace_back(delta);
 
             //Add next elements to queue
-            if(currentTriangle.uTriangles.size() != 1) {
+            if(currentTriangle.uTriangles.size() > 4) {
                 //Now we divide all micro triangles into the 4 regions (after a bunch of data computation...)
                 glm::vec3 v0v1 = (currentTriangle.v0 + currentTriangle.v1) / 2.0f;
                 glm::vec3 v0v2 = (currentTriangle.v0 + currentTriangle.v2) / 2.0f;

@@ -42,7 +42,3 @@ struct Triangle2D {
         return cross > 0.0f;
     }
 };
-
-struct Triangle2DOnlyPos {
-    glm::vec2 v0, v1, v2;
-};
