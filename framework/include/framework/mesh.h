@@ -5,6 +5,7 @@
 #include "TransformationChannel.h"
 #include <vector>
 #include "../../src/Triangle2D.h"
+#include "../../src/TriangleData.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 DISABLE_WARNINGS_POP()
@@ -76,4 +77,8 @@ public:
 	//We return a vector that contains deltas hierarchically, but do not store the lowest subdivision level. So if a triangle has subdivision level 2, a total of 5 deltas will be
 	//made for a single triangle. One delta for level 0, and four deltas for level 1.
 	[[nodiscard]] std::vector<float> triangleDeltas(const std::vector<int>& dOffsets) const;
+
+	//For each micro-vertex in each triangle, we compute the displacement scales.
+	//The displacement scale should be multiplied with the (interpolated) displacement direction to get the displacement vector
+	std::vector<float> computeDisplacementScales(std::vector<TriangleData>& tData) const;
 };

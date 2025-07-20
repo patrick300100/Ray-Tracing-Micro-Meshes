@@ -21,7 +21,7 @@ DISABLE_WARNINGS_POP()
 #include <vector>
 #include <ranges>
 #include <framework/trackball.h>
-#include "Plane.h"
+#include "TriangleData.h"
 
 #ifdef _DEBUG
 #define DX12_ENABLE_DEBUG_LAYER
@@ -34,13 +34,6 @@ DISABLE_WARNINGS_POP()
 struct RayTraceVertex {
     glm::vec3 position;
     glm::vec3 direction;
-};
-
-struct TriangleData {
-    glm::uvec3 vIndices;
-    int nRows;
-    int displacementOffset;
-    int minMaxOffset;
 };
 
 class Application {
@@ -96,26 +89,7 @@ public:
 
             std::vector<TriangleData> tData;
             tData.reserve(cpuMesh.triangles.size());
-            std::vector<float> displacementScales; //Contains a scalar of how much to displace along the displacement direction
-            for(const auto& triangle : cpuMesh.triangles) {
-                //Compute plane positions of each micro vertex
-                const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
-                const auto v1 = cpuMesh.vertices[triangle.baseVertexIndices.y];
-                const auto v2 = cpuMesh.vertices[triangle.baseVertexIndices.z];
-
-                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), displacementScales.size());
-
-                std::ranges::transform(triangle.uVertices, std::back_inserter(displacementScales), [&](const uVertex& uv) {
-                    const glm::vec3 bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
-                    const auto interpolatedDir = bc.x * v0.direction + bc.y * v1.direction + bc.z * v2.direction;
-
-                    //Avoid dividing by 0
-                    if(interpolatedDir.x != 0.0f) return uv.displacement.x / interpolatedDir.x;
-                    if(interpolatedDir.y != 0.0f) return uv.displacement.y / interpolatedDir.y;
-                    if(interpolatedDir.z != 0.0f) return uv.displacement.z / interpolatedDir.z;
-                    return 0.0f; //No displacement
-                });
-            }
+            const auto displacementScales = cpuMesh.computeDisplacementScales(tData);
 
             std::vector<int> offsets;
             const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(offsets);

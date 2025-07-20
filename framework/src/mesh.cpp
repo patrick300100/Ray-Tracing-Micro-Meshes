@@ -446,3 +446,28 @@ std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const 
 
     return boundTriangles;
 }
+
+std::vector<float> Mesh::computeDisplacementScales(std::vector<TriangleData>& tData) const {
+    std::vector<float> displacementScales;
+
+    for(const auto& triangle : triangles) {
+        const auto v0 = vertices[triangle.baseVertexIndices.x];
+        const auto v1 = vertices[triangle.baseVertexIndices.y];
+        const auto v2 = vertices[triangle.baseVertexIndices.z];
+
+        tData.emplace_back(triangle.baseVertexIndices, numberOfVerticesOnEdge(), displacementScales.size());
+
+        std::ranges::transform(triangle.uVertices, std::back_inserter(displacementScales), [&](const uVertex& uv) {
+            const glm::vec3 bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
+            const auto interpolatedDir = bc.x * v0.direction + bc.y * v1.direction + bc.z * v2.direction;
+
+            //Avoid dividing by 0
+            if(interpolatedDir.x != 0.0f) return uv.displacement.x / interpolatedDir.x;
+            if(interpolatedDir.y != 0.0f) return uv.displacement.y / interpolatedDir.y;
+            if(interpolatedDir.z != 0.0f) return uv.displacement.z / interpolatedDir.z;
+            return 0.0f; //No displacement
+        });
+    }
+
+    return displacementScales;
+}
