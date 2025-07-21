@@ -152,9 +152,7 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
     return {vs, is};
 }
 
-int Mesh::numberOfVerticesOnEdge() const {
-    Triangle triangle = triangles[0];
-
+int Mesh::numberOfVerticesOnEdge(const Triangle& triangle) const {
     const auto v0 = vertices[triangle.baseVertexIndices.x];
     const auto v1 = vertices[triangle.baseVertexIndices.y];
     const auto v2 = vertices[triangle.baseVertexIndices.z];
@@ -361,7 +359,7 @@ std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const 
     for(const auto& [t, dOffset] : std::views::zip(triangles, dOffsets)) {
         if(t.subdivisionLevel() == 0) continue; //If we have subdivision level 0, we do not need to store any delta values.
 
-        const auto nRows = numberOfVerticesOnEdge();
+        const auto nRows = numberOfVerticesOnEdge(t);
 
         const auto v0 = vertices[t.baseVertexIndices.x];
         const auto v1 = vertices[t.baseVertexIndices.y];
@@ -473,7 +471,7 @@ std::vector<float> Mesh::computeDisplacementScales(std::vector<TriangleData>& tD
 
         const auto subDivLvl = triangle.subdivisionLevel();
 
-        tData.emplace_back(triangle.baseVertexIndices, numberOfVerticesOnEdge(), subDivLvl, displacementScales.size());
+        tData.emplace_back(triangle.baseVertexIndices, numberOfVerticesOnEdge(triangle), subDivLvl, displacementScales.size());
 
         /*
          * Now we're going to compute the displacement scale for each micro-vertex.

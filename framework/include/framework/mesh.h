@@ -68,7 +68,7 @@ public:
 	[[nodiscard]] std::vector<glm::uvec3> baseTriangleIndices() const;
 	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const; //Contains base vertices + micro vertices
 
-	[[nodiscard]] int numberOfVerticesOnEdge() const; //Computes the number of (micro) vertices on an edge
+	[[nodiscard]] int numberOfVerticesOnEdge(const Triangle& triangle) const; //Computes the number of (micro) vertices on an edge given a triangle
 
 	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<int>& offsets) const; //Compute hierarchical minimum and maximum displacements
 
