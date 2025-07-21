@@ -442,26 +442,6 @@ std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const 
 }
 
 std::vector<float> Mesh::computeDisplacementScales(std::vector<TriangleData>& tData) const {
-    //We store barycentric coordinates of all micro-vertices for all levels.
-    //NVIDIA's micromesh supports up to level 5: so a total of 6 levels (0 included).
-    std::vector<std::vector<glm::vec3>> baryCentricsAllLvls;
-    baryCentricsAllLvls.resize(6);
-
-    for(int lvl = 0; lvl < 6; lvl++) {
-        const int N = 1 << lvl; //2^lvl
-        for (int i = 0; i <= N; ++i) {
-            for (int j = 0; j <= N - i; ++j) {
-                const int k = N - i - j;
-                const float b0 = static_cast<float>(i) / static_cast<float>(N);
-                const float b1 = static_cast<float>(j) / static_cast<float>(N);
-                const float b2 = static_cast<float>(k) / static_cast<float>(N);
-                const glm::vec3 bc(b0, b1, b2);
-                baryCentricsAllLvls[lvl].insert(baryCentricsAllLvls[lvl].begin(), bc);
-            }
-        }
-    }
-
-
     std::vector<float> displacementScales;
 
     for(const auto& triangle : triangles) {
@@ -478,21 +458,16 @@ std::vector<float> Mesh::computeDisplacementScales(std::vector<TriangleData>& tD
          * If a neighbouring triangle has a different (lower) subdivision level, then a micro-vertex doesn't always exist on the edge.
          * If that's the case, we place a dummy scale of -1.
          */
-        int uvIndex = 0;
-        for(auto i : baryCentricsAllLvls[subDivLvl]) {
-            const auto uv = triangle.uVertices[uvIndex];
-
+        for(const auto& uv : triangle.uVertices) {
             const glm::vec3 bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
             const auto interpolatedDir = bc.x * v0.direction + bc.y * v1.direction + bc.z * v2.direction;
 
-            if(glm::all(glm::epsilonEqual(i, bc, 1e-4f))) {
+            if(uv.present) {
                 //Avoid dividing by 0
                 if(interpolatedDir.x != 0.0f) displacementScales.push_back(uv.displacement.x / interpolatedDir.x);
                 else if(interpolatedDir.y != 0.0f) displacementScales.push_back(uv.displacement.y / interpolatedDir.y);
                 else if(interpolatedDir.z != 0.0f) displacementScales.push_back(uv.displacement.z / interpolatedDir.z);
                 else displacementScales.push_back(0.0f); //No displacement
-
-                uvIndex++;
             } else {
                 displacementScales.push_back(-1.0f); //Put dummy displacement scale of -1
             }

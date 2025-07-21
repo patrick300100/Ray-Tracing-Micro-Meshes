@@ -3,6 +3,7 @@
 #include <framework/disable_all_warnings.h>
 #include <iostream>
 #include <ranges>
+#include <unordered_set>
 DISABLE_WARNINGS_PUSH()
 #include <glm/gtc/type_ptr.hpp>
 DISABLE_WARNINGS_POP()
@@ -97,19 +98,25 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
     }
 
     for(const auto& [f, t] : std::views::zip(umesh.faces, triangles)) {
-        std::vector<uVertex> uvs; //micro vertices
-        for(int j = 0; j < f.V.rows(); j++) {
-            const auto& pos = f.V.row(j);
-            const auto& dis = f.VD.row(j);
-
-            uvs.emplace_back(glm::vec3{pos(0), pos(1), pos(2)}, glm::vec3{dis(0), dis(1), dis(2)});
-        }
-
+        std::unordered_set<unsigned int> uvIndices;
         std::vector<glm::uvec3> ufs; //micro faces
         for(int j = 0; j < f.F.rows(); j++) {
             const auto& indices = f.F.row(j);
 
             ufs.emplace_back(indices(0), indices(1), indices(2));
+            uvIndices.insert(indices.begin(), indices.end());
+        }
+
+        std::vector<uVertex> uvs; //micro vertices
+        for(int j = 0; j < f.V.rows(); j++) {
+            const auto& pos = f.V.row(j);
+            const auto& dis = f.VD.row(j);
+
+            uvs.emplace_back(
+                glm::vec3{pos(0), pos(1), pos(2)},
+                glm::vec3{dis(0), dis(1), dis(2)},
+                uvIndices.contains(j)
+            );
         }
 
         myMesh.triangles.emplace_back(t, uvs, ufs);

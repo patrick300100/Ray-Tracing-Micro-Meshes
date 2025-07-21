@@ -13,6 +13,7 @@ DISABLE_WARNINGS_POP()
 struct uVertex {
 	glm::vec3 position;
 	glm::vec3 displacement;
+	bool present; //When neighbouring triangles have different subdivision levels, micro-vertices are not always present on the edge
 };
 
 struct Triangle {
