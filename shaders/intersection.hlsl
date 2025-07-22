@@ -69,16 +69,6 @@ struct Ray2D {
     }
 };
 
-struct Edge {
-	Vertex2D start;
-    Vertex2D end;
-
-    Vertex2D middle() {
-        Vertex2D v = {(start.position + end.position) * 0.5, (start.bc + end.bc) * 0.5, (start.coordinates + end.coordinates) * 0.5};
-        return v;
-    }
-};
-
 struct Triangle2D {
     Vertex2D vertices[3]; //3 vertices of triangle
 
@@ -131,6 +121,21 @@ float getDisplacementScale(float2 coords, int dOffset) {
 
     return displacementScales[dOffset + index];
 }
+
+struct Edge {
+	Vertex2D start;
+    Vertex2D end;
+
+    Vertex2D middle(int dOffset, out bool present) {
+        float2 newCoords = (start.coordinates + end.coordinates) * 0.5;
+        Vertex2D v = {(start.position + end.position) * 0.5, (start.bc + end.bc) * 0.5, newCoords};
+
+        if(getDisplacementScale(newCoords, dOffset) == -1) present = false;
+        else present = true;
+
+        return v;
+    }
+};
 
 //Computes the intersection point of 2 lines
 //https://en.wikipedia.org/wiki/Line-line_intersection#Given_two_points_on_each_line
@@ -294,9 +299,10 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     Edge base1 = {v1, v2};
     Edge base2 = {v2, v0};
 
-    Vertex2D uv0 = base0.middle();
-    Vertex2D uv1 = base1.middle();
-    Vertex2D uv2 = base2.middle();
+    bool uv0Present, uv1Present, uv2Present;
+    Vertex2D uv0 = base0.middle(dOffset, uv0Present);
+    Vertex2D uv1 = base1.middle(dOffset, uv1Present);
+    Vertex2D uv2 = base2.middle(dOffset, uv2Present);
 
     /*
      * Compute indices for the buffer which holds the bounding triangles
@@ -330,8 +336,40 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     Vertex2D subTriV1[4] = {uv0, v1, uv1, uv1};
     Vertex2D subTriV2[4] = {uv2, uv1, v2, uv2};
     int pathVals[4] = {0, 1, 3, 2};
+    int subTriCount = uv0Present + uv1Present + uv2Present + 1;
 
-    [unroll] for(int i = 0; i < 4; i++) {
+    if(level + 1 == subDivLvl && subTriCount != 4) {
+        if(uv0Present && !uv1Present && !uv2Present) {
+            subTriV2[0] = v2;
+            subTriV2[1] = v2;
+        } else if(!uv0Present && uv1Present && !uv2Present) {
+            subTriV1[0] = v1;
+            subTriV2[0] = uv1;
+            subTriV0[1] = v0;
+            subTriV1[1] = uv1;
+            subTriV2[1] = v2;
+        } else if(!uv0Present && !uv1Present && uv2Present) {
+            subTriV1[0] = v1;
+            subTriV0[1] = v1;
+            subTriV1[1] = v2;
+            subTriV2[1] = uv2;
+        } else if(uv0Present && !uv1Present && uv2Present) {
+            subTriV2[1] = uv2;
+            subTriV0[2] = v1;
+            subTriV1[2] = v2;
+            subTriV2[2] = uv2;
+        } else if(uv0Present && uv1Present && !uv2Present) {
+            subTriV2[0] = v2;
+            subTriV0[2] = uv0;
+        } else if(!uv0Present && uv1Present && uv2Present) {
+            subTriV1[0] = v1;
+            subTriV0[1] = v1;
+            subTriV1[1] = uv1;
+            subTriV2[1] = uv2;
+        }
+    }
+
+    for(int i = 0; i < subTriCount; i++) {
         float3 ts = {-1, -1, -1};
 
         Vertex2D triVerts[3] = {subTriV0[i], subTriV1[i], subTriV2[i]};
