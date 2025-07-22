@@ -91,17 +91,7 @@ public:
             tData.reserve(cpuMesh.triangles.size());
             const auto displacementScales = cpuMesh.computeDisplacementScales(tData);
 
-            std::vector<int> offsets;
-            const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(offsets);
-
-            try {
-                if(offsets.size() != 0 && offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
-                for(int i = 0; i < offsets.size(); i++) {
-                    tData[i].minMaxOffset = offsets[i];
-                }
-            } catch(const std::exception& e) {
-                std::cerr << e.what() << std::endl;
-            }
+            const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(tData);
 
             triangleData = DefaultBuffer<TriangleData>(device, tData.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             triangleData.upload(tData, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);

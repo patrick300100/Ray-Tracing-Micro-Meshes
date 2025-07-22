@@ -174,7 +174,7 @@ int Triangle::subdivisionLevel() const {
     return std::ceil(std::log2(uFaces.size()) / 2.0);
 }
 
-std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) const {
+std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<TriangleData>& tData) const {
     std::vector<glm::vec2> minMaxDisplacements;
 
     struct TriangleElement {
@@ -182,10 +182,10 @@ std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) cons
         glm::vec3 v0, v1, v2; //Corner vertices
     };
 
-    for(const auto& t : triangles) {
+    for(const auto& [t, td] : std::views::zip(triangles, tData)) {
         if(t.subdivisionLevel() == 0) continue; //If we have subdivision level 0, we do not need to store any min-max displacements.
 
-        offsets.push_back(minMaxDisplacements.size());
+        td.minMaxOffset = minMaxDisplacements.size();
 
         //First we compute the normal of the triangle's plane
         const auto v0 = vertices[t.baseVertexIndices.x];

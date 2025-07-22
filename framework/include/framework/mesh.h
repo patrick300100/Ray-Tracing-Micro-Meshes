@@ -71,7 +71,8 @@ public:
 
 	[[nodiscard]] int numberOfVerticesOnEdge(const Triangle& triangle) const; //Computes the number of (micro) vertices on an edge given a triangle
 
-	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<int>& offsets) const; //Compute hierarchical minimum and maximum displacements
+	//Compute hierarchical minimum and maximum displacements (not lowest subdivision level)
+	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<TriangleData>& tData) const;
 
 	//Compute delta for each hierarchical triangle in 2D. Delta represents a scalar by how much to expand the edges to include micro-vertices of future subdivision levels.
 	//So if we have a displaced triangle, and we project it onto the base triangle's plane, we compute 3 vertex positions that bounds all micro-vertices in that triangle (also that of
