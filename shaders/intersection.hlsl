@@ -99,18 +99,6 @@ static const int MAX_STACK_DEPTH = 256; //Should be enough
 static const float MAX_FLOAT = 3.402823466e+38f;
 static const float MAX_T = 100000.0f; //Should coincide (or be higher) with the ray.TMax in ray generation
 
-//Projects a position onto the plane defined by T and B
-// @param p: the position to project onto the plane
-// @param T: the tangent vector
-// @param B: the bitangent vector
-// @param v0Pos: the position of vertex0 (will act as the origin of the plane)
-// @return: the position onto the plane, relative to the origin of the plane (v0Pos)
-float2 projectTo2D(float3 p, float3 T, float3 B, float3 v0Pos) {
-	float3 rel = p - v0Pos;
-
-    return float2(dot(rel, T), dot(rel, B));
-}
-
 //Gets the scale by how much to displace a micro-vertex along its direction.
 // @param triangular grid coordinates of the vertex
 // @param the offset into the buffer
@@ -522,7 +510,7 @@ void main() {
     float3 O_proj = O - dot(O - v0.position, p.N) * p.N;
     float3 D_proj = normalize(D - dot(D, p.N) * p.N);
 
-    float2 rayOrigin2D = projectTo2D(O_proj, p.T, p.B, v0.position);
+    float2 rayOrigin2D = p.projectOnto(O_proj);
     float2 rayDir2D = normalize(float2(dot(D_proj, p.T), dot(D_proj, p.B)));
     Ray2D ray = {rayOrigin2D, rayDir2D};
 
