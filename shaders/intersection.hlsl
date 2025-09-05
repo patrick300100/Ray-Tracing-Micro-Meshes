@@ -140,7 +140,7 @@ float2 intersect(float2 p1, float2 p2, float2 p3, float2 p4) {
 
 //Expands a triangle by moving all edges a distance outwards. The intersection points of the expanded edges are the vertices of the expanded triangle.
 // @param verts: the vertex positions of the triangle
-// @param s: the scale by how much to expand the edges. This scalar should be applied to the interpolated direction vector
+// @param s: the scale by how much to expand the edges outwards.
 // @return the vertex positions of the expanded triangle
 float3x2 expandTriangle(float3x2 verts, float s) {
     float3x2 newVerts;
@@ -382,7 +382,7 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
         if(rayIntersectTriangle(boundingTriVerts, ray, ts) && !isOutsideDisplacementRegion(ts, p, ray, minMaxDispl)) {
             float entryT = min(ts[0] < 0 ? MAX_T : ts[0], min(ts[1] < 0 ? MAX_T : ts[1], ts[2] < 0 ? MAX_T : ts[2]));
 
-            Triangle2D newT = {{subTriV0[i], subTriV1[i], subTriV2[i]}, t.path, t.pathCount + 1, entryT, boundingTriIndices[i]};
+            Triangle2D newT = {triVerts, t.path, t.pathCount + 1, entryT, boundingTriIndices[i]};
             newT.path[t.pathCount] = pathVals[i];
 
             StackElement se = {newT, level + 1};
