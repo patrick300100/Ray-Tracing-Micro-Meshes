@@ -1,5 +1,6 @@
 #include "mesh.h"
 
+#include <functional>
 #include <ranges>
 #include <unordered_map>
 #include <queue>
@@ -475,4 +476,8 @@ std::vector<float> Mesh::computeDisplacementScales(std::vector<TriangleData>& tD
     }
 
     return displacementScales;
+}
+
+bool Mesh::hasUniformSubdivisionLevel() const {
+    return std::ranges::adjacent_find(triangles, std::ranges::not_equal_to{}, [](const Triangle& t) { return t.subdivisionLevel(); }) == triangles.end();
 }

@@ -114,6 +114,12 @@ struct Edge {
 	Vertex2D start;
     Vertex2D end;
 
+    #ifdef UNIFORM_SUBDIV_LVL
+    Vertex2D middle() {
+        Vertex2D v = {(start.position + end.position) * 0.5, (start.bc + end.bc) * 0.5, (start.coordinates + end.coordinates) * 0.5};
+        return v;
+    }
+    #else
     Vertex2D middle(int dOffset, out bool present) {
         float2 newCoords = (start.coordinates + end.coordinates) * 0.5;
         Vertex2D v = {(start.position + end.position) * 0.5, (start.bc + end.bc) * 0.5, newCoords};
@@ -123,6 +129,7 @@ struct Edge {
 
         return v;
     }
+    #endif
 };
 
 //Computes the intersection point of 2 lines
@@ -287,10 +294,16 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     Edge base1 = {v1, v2};
     Edge base2 = {v2, v0};
 
+    #ifdef UNIFORM_SUBDIV_LVL
+    Vertex2D uv0 = base0.middle();
+    Vertex2D uv1 = base1.middle();
+    Vertex2D uv2 = base2.middle();
+    #else
     bool uv0Present, uv1Present, uv2Present;
     Vertex2D uv0 = base0.middle(dOffset, uv0Present);
     Vertex2D uv1 = base1.middle(dOffset, uv1Present);
     Vertex2D uv2 = base2.middle(dOffset, uv2Present);
+    #endif
 
     /*
      * Compute indices for the buffer which holds the bounding triangles
@@ -324,6 +337,7 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     Vertex2D subTriV1[4] = {uv0, v1, uv1, uv1};
     Vertex2D subTriV2[4] = {uv2, uv1, v2, uv2};
     int pathVals[4] = {0, 1, 3, 2};
+    #ifndef UNIFORM_SUBDIV_LVL
     int subTriCount = uv0Present + uv1Present + uv2Present + 1;
 
     if(level + 1 == subDivLvl && subTriCount != 4) {
@@ -358,6 +372,9 @@ void addIntersectedTriangles(Triangle2D t, Ray2D ray, int dOffset, int minMaxOff
     }
 
     for(int i = 0; i < subTriCount; i++) {
+    #else
+    [unroll] for(int i = 0; i < 4; i++) {
+    #endif
         float3 ts = {-1, -1, -1};
 
         Vertex2D triVerts[3] = {subTriV0[i], subTriV1[i], subTriV2[i]};

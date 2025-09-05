@@ -32,7 +32,7 @@ class RayTraceShader {
         LOCAL
     };
 
-    void compileShader(const ComPtr<IDxcCompiler3>& compiler, const ComPtr<IDxcUtils>& utils, const LPCWSTR& shaderFile);
+    void compileShader(const ComPtr<IDxcCompiler3>& compiler, const ComPtr<IDxcUtils>& utils, const LPCWSTR& shaderFile, bool uniformSubDivLvl);
     void initBuffers(const std::vector<std::pair<BufferType, int>>& buffers, RootSignatureType type);
 
 public:
@@ -49,7 +49,8 @@ public:
         const LPCWSTR& intersectionFile,
         const std::vector<std::pair<BufferType, int>>& buffersLocal,
         const std::vector<std::pair<BufferType, int>>& buffersGlobal,
-        const ComPtr<ID3D12Device>& d
+        const ComPtr<ID3D12Device>& d,
+        bool uniformSubDivLvl
     );
 
     void createPipeline();

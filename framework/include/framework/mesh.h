@@ -84,4 +84,7 @@ public:
 	//For each micro-vertex in each triangle, we compute the displacement scales.
 	//The displacement scale should be multiplied with the (interpolated) displacement direction to get the displacement vector
 	std::vector<float> computeDisplacementScales(std::vector<TriangleData>& tData) const;
+
+	//Returns true if all triangles of the mesh have the same subdivision level. False if not
+	[[nodiscard]] bool hasUniformSubdivisionLevel() const;
 };
