@@ -9,11 +9,11 @@ struct Plane {
 
     //Projects point p onto the plane
     // @param p: the point to project onto the plane
-    // @return: a float3 where the xy component are the plane positions, and z is the height to displace along the plane normal
-    float3 projectOnto(float3 p) {
+    // @return: the plane coordinates, relative to the plane origin
+    float2 projectOnto(float3 p) {
         float3 movedP = p - origin;
 
-        return float3(dot(movedP, T), dot(movedP, B), dot(movedP, N));
+        return float2(dot(movedP, T), dot(movedP, B));
     }
 
     //Unprojects a 2D point back to 3D
@@ -486,9 +486,9 @@ void main() {
     /*
 	 * Creation of 2D triangle
 	 */
-    Vertex2D v0Proj = {p.projectOnto(v0.position).xy, float3(1, 0, 0), v0GridCoordinate};
-    Vertex2D v1Proj = {p.projectOnto(v1.position).xy, float3(0, 1, 0), v1GridCoordinate};
-    Vertex2D v2Proj = {p.projectOnto(v2.position).xy, float3(0, 0, 1), v2GridCoordinate};
+    Vertex2D v0Proj = {p.projectOnto(v0.position), float3(1, 0, 0), v0GridCoordinate};
+    Vertex2D v1Proj = {p.projectOnto(v1.position), float3(0, 1, 0), v1GridCoordinate};
+    Vertex2D v2Proj = {p.projectOnto(v2.position), float3(0, 0, 1), v2GridCoordinate};
 
     int path[5];
     Triangle2D t = {{v0Proj, v1Proj, v2Proj}, path, 0, -1, tData.minMaxOffset};
