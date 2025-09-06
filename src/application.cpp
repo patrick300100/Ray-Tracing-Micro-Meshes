@@ -70,7 +70,7 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 6}, {UAV, 2}, {CBV, 1}},
+               {{SRV, 6}, {UAV, 2}, {CBV, 2}},
                device,
                mesh[0].cpuMesh.hasUniformSubdivisionLevel()
            );
@@ -150,6 +150,10 @@ public:
             invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
             invViewProjBuffer.upload({invViewProj});
             rtShader.createCBV(invViewProjBuffer.getBuffer());
+
+            screenshotBuffer = UploadBuffer<int>(device, 1, true);
+            screenshotBuffer.upload({false});
+            rtShader.createCBV(screenshotBuffer.getBuffer());
 
             rtShader.createPipeline();
             rtShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
@@ -340,6 +344,7 @@ private:
     ComPtr<ID3D12Resource> screenshotOutput;
     RayTraceShader rtShader, rtTriangleShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
+    UploadBuffer<int> screenshotBuffer;
     DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<float> displacementScalesBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;

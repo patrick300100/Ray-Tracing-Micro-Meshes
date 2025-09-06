@@ -6,6 +6,10 @@ cbuffer Camera : register(b0) {
     float4x4 invViewProj;
 };
 
+cbuffer Screenshot : register(b1) {
+    bool takeScreenshot;
+};
+
 RaytracingAccelerationStructure scene : register(t0);
 RWTexture2D<float4> outputTexture : register(u0);
 RWTexture2D<float4> screenshotTexture : register(u1);
@@ -41,5 +45,6 @@ void main() {
 
     TraceRay(scene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
 
-    outputTexture[DispatchRaysIndex().xy] = float4(payload.color, 1.0);
+    if(takeScreenshot) screenshotTexture[DispatchRaysIndex().xy] = float4(payload.color, 1.0);
+    else outputTexture[DispatchRaysIndex().xy] = float4(payload.color, 1.0);
 }
