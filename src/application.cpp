@@ -21,7 +21,7 @@ DISABLE_WARNINGS_POP()
 #include <vector>
 #include <ranges>
 #include <framework/trackball.h>
-#include "Plane.h"
+#include "TriangleData.h"
 
 #ifdef _DEBUG
 #define DX12_ENABLE_DEBUG_LAYER
@@ -34,13 +34,6 @@ DISABLE_WARNINGS_POP()
 struct RayTraceVertex {
     glm::vec3 position;
     glm::vec3 direction;
-};
-
-struct TriangleData {
-    glm::uvec3 vIndices;
-    int nRows;
-    int displacementOffset;
-    int minMaxOffset;
 };
 
 class Application {
@@ -77,8 +70,9 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 6}, {UAV, 1}, {CBV, 2}},
-               device
+               {{SRV, 6}, {UAV, 1}, {CBV, 1}},
+               device,
+               mesh[0].cpuMesh.hasUniformSubdivisionLevel()
            );
 
             rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
@@ -96,38 +90,9 @@ public:
 
             std::vector<TriangleData> tData;
             tData.reserve(cpuMesh.triangles.size());
-            std::vector<float> displacementScales; //Contains a scalar of how much to displace along the displacement direction
-            for(const auto& triangle : cpuMesh.triangles) {
-                //Compute plane positions of each micro vertex
-                const auto v0 = cpuMesh.vertices[triangle.baseVertexIndices.x];
-                const auto v1 = cpuMesh.vertices[triangle.baseVertexIndices.y];
-                const auto v2 = cpuMesh.vertices[triangle.baseVertexIndices.z];
+            const auto displacementScales = cpuMesh.computeDisplacementScales(tData);
 
-                tData.emplace_back(triangle.baseVertexIndices, mesh[0].cpuMesh.numberOfVerticesOnEdge(), displacementScales.size());
-
-                std::ranges::transform(triangle.uVertices, std::back_inserter(displacementScales), [&](const uVertex& uv) {
-                    const glm::vec3 bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
-                    const auto interpolatedDir = bc.x * v0.direction + bc.y * v1.direction + bc.z * v2.direction;
-
-                    //Avoid dividing by 0
-                    if(interpolatedDir.x != 0.0f) return uv.displacement.x / interpolatedDir.x;
-                    if(interpolatedDir.y != 0.0f) return uv.displacement.y / interpolatedDir.y;
-                    if(interpolatedDir.z != 0.0f) return uv.displacement.z / interpolatedDir.z;
-                    return 0.0f; //No displacement
-                });
-            }
-
-            std::vector<int> offsets;
-            const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(offsets);
-
-            try {
-                if(offsets.size() != tData.size()) throw std::runtime_error("There should be as many offsets as there are base triangles");
-                for(int i = 0; i < offsets.size(); i++) {
-                    tData[i].minMaxOffset = offsets[i];
-                }
-            } catch(const std::exception& e) {
-                std::cerr << e.what() << std::endl;
-            }
+            const auto minMaxDisplacements = cpuMesh.minMaxDisplacements(tData);
 
             triangleData = DefaultBuffer<TriangleData>(device, tData.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             triangleData.upload(tData, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -177,10 +142,6 @@ public:
             invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
             invViewProjBuffer.upload({invViewProj});
             rtShader.createCBV(invViewProjBuffer.getBuffer());
-
-            meshDataBuffer = UploadBuffer<int>(device, 1, true);
-            meshDataBuffer.upload({mesh[0].cpuMesh.subdivisionLevel()});
-            rtShader.createCBV(meshDataBuffer.getBuffer());
 
             rtShader.createPipeline();
             rtShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
@@ -365,7 +326,6 @@ private:
     ComPtr<ID3D12Resource> raytracingOutput;
     RayTraceShader rtShader, rtTriangleShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
-    UploadBuffer<int> meshDataBuffer;
     DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<float> displacementScalesBuffer;
     DefaultBuffer<RayTraceVertex> vertexBuffer;

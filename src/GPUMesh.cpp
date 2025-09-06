@@ -60,7 +60,7 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuM
 
     //Prepare buffer data for use in compute shader
     std::vector<SimpleTriangle> triangles;
-    std::vector<uVertex> uVertices;
+    std::vector<SimpleVertex> uVertices;
     for(const auto& t : cpuMesh.triangles) {
         SimpleTriangle st{};
 
@@ -68,14 +68,14 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuM
         st.uVerticesCount = t.uVertices.size();
 
         triangles.push_back(st);
-        uVertices.insert(uVertices.end(), t.uVertices.begin(), t.uVertices.end());
+        std::ranges::transform(t.uVertices, std::back_inserter(uVertices), [&](const uVertex& uv) { return SimpleVertex{uv.position, uv.displacement}; });
     }
 
     CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_COMPUTE);
     cw.reset();
 
     //Create buffers for on the GPU and upload data to those buffers
-    DefaultBuffer<uVertex> microVertexBuffer(device, uVertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+    DefaultBuffer<SimpleVertex> microVertexBuffer(device, uVertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
     microVertexBuffer.upload(uVertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
     DefaultBuffer<SimpleTriangle> triangleBuffer(device, triangles.size(), D3D12_RESOURCE_STATE_COPY_DEST);

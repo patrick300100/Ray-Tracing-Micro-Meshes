@@ -1,5 +1,6 @@
 #include "mesh.h"
 
+#include <functional>
 #include <ranges>
 #include <unordered_map>
 #include <queue>
@@ -152,9 +153,7 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
     return {vs, is};
 }
 
-int Mesh::numberOfVerticesOnEdge() const {
-    Triangle triangle = triangles[0];
-
+int Mesh::numberOfVerticesOnEdge(const Triangle& triangle) const {
     const auto v0 = vertices[triangle.baseVertexIndices.x];
     const auto v1 = vertices[triangle.baseVertexIndices.y];
     const auto v2 = vertices[triangle.baseVertexIndices.z];
@@ -172,31 +171,22 @@ int Mesh::numberOfVerticesOnEdge() const {
     return 2; //In case there are no micro vertices, we just have 2 vertices on an edge
 }
 
-int Mesh::subdivisionLevel() const {
-    return std::countr_zero(triangles[0].uFaces.size()) / 2;
+int Triangle::subdivisionLevel() const {
+    return std::ceil(std::log2(uFaces.size()) / 2.0);
 }
 
-std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) const {
+std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<TriangleData>& tData) const {
     std::vector<glm::vec2> minMaxDisplacements;
-
-    /**
-     * If we have subdivision level 0, we do not need to store any min-max displacements.
-     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
-     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
-     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
-     */
-    if(subdivisionLevel() == 0) {
-        minMaxDisplacements.emplace_back(0, 0);
-        return minMaxDisplacements;
-    }
 
     struct TriangleElement {
         std::vector<glm::uvec3> uTriangles; //Each element is a micro triangle that is defined by 3 indices into the micro vertex array
         glm::vec3 v0, v1, v2; //Corner vertices
     };
 
-    for(const auto& t : triangles) {
-        offsets.push_back(minMaxDisplacements.size());
+    for(const auto& [t, td] : std::views::zip(triangles, tData)) {
+        if(t.subdivisionLevel() == 0) continue; //If we have subdivision level 0, we do not need to store any min-max displacements.
+
+        td.minMaxOffset = minMaxDisplacements.size();
 
         //First we compute the normal of the triangle's plane
         const auto v0 = vertices[t.baseVertexIndices.x];
@@ -256,6 +246,13 @@ std::vector<glm::vec2> Mesh::minMaxDisplacements(std::vector<int>& offsets) cons
         }
     }
 
+    /**
+     * If all triangles have subdivision level 0, we do not need to store any min-max displacements.
+     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
+     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
+     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
+     */
+    if(minMaxDisplacements.empty()) minMaxDisplacements.emplace_back(0, 0);
     return minMaxDisplacements;
 }
 
@@ -336,17 +333,6 @@ float computeTriangleDelta(const Triangle2D& t, const std::unordered_set<glm::ve
 std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const {
     std::vector<float> boundTriangles;
 
-    /**
-     * If we have subdivision level 0, we do not need to store any delta values.
-     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
-     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
-     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
-     */
-    if(subdivisionLevel() == 0) {
-        boundTriangles.push_back(0.0f);
-        return boundTriangles;
-    }
-
     std::vector<glm::vec3> positions2D;
     for(const auto& triangle : triangles) {
         //Compute plane positions of each micro vertex
@@ -372,7 +358,9 @@ std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const 
     };
 
     for(const auto& [t, dOffset] : std::views::zip(triangles, dOffsets)) {
-        const auto nRows = numberOfVerticesOnEdge();
+        if(t.subdivisionLevel() == 0) continue; //If we have subdivision level 0, we do not need to store any delta values.
+
+        const auto nRows = numberOfVerticesOnEdge(t);
 
         const auto v0 = vertices[t.baseVertexIndices.x];
         const auto v1 = vertices[t.baseVertexIndices.y];
@@ -444,5 +432,52 @@ std::vector<float> Mesh::triangleDeltas(const std::vector<int>& dOffsets) const 
         }
     }
 
+    /**
+     * If all triangles have subdivision level 0, we do not need to store any delta values.
+     * However, creating empty buffers in DX12 is not permitted. Rewriting the codebase to support empty buffers
+     * (only creating buffer when size > 0 for example) is too much work, since the shader code also needs to be adapted for this.
+     * So the simplest fix is to just add 1 dummy value. But technically we do not need a buffer when we have subdivision level 0!
+     */
+    if(boundTriangles.empty()) boundTriangles.push_back(0.0f);
     return boundTriangles;
+}
+
+std::vector<float> Mesh::computeDisplacementScales(std::vector<TriangleData>& tData) const {
+    std::vector<float> displacementScales;
+
+    for(const auto& triangle : triangles) {
+        const auto v0 = vertices[triangle.baseVertexIndices.x];
+        const auto v1 = vertices[triangle.baseVertexIndices.y];
+        const auto v2 = vertices[triangle.baseVertexIndices.z];
+
+        const auto subDivLvl = triangle.subdivisionLevel();
+
+        tData.emplace_back(triangle.baseVertexIndices, numberOfVerticesOnEdge(triangle), subDivLvl, displacementScales.size());
+
+        /*
+         * Now we're going to compute the displacement scale for each micro-vertex.
+         * If a neighbouring triangle has a different (lower) subdivision level, then a micro-vertex doesn't always exist on the edge.
+         * If that's the case, we place a dummy scale of -1.
+         */
+        for(const auto& uv : triangle.uVertices) {
+            const glm::vec3 bc = Triangle::computeBaryCoords(v0.position, v1.position, v2.position, uv.position);
+            const auto interpolatedDir = bc.x * v0.direction + bc.y * v1.direction + bc.z * v2.direction;
+
+            if(uv.present) {
+                //Avoid dividing by 0
+                if(interpolatedDir.x != 0.0f) displacementScales.push_back(uv.displacement.x / interpolatedDir.x);
+                else if(interpolatedDir.y != 0.0f) displacementScales.push_back(uv.displacement.y / interpolatedDir.y);
+                else if(interpolatedDir.z != 0.0f) displacementScales.push_back(uv.displacement.z / interpolatedDir.z);
+                else displacementScales.push_back(0.0f); //No displacement
+            } else {
+                displacementScales.push_back(-1.0f); //Put dummy displacement scale of -1
+            }
+        }
+    }
+
+    return displacementScales;
+}
+
+bool Mesh::hasUniformSubdivisionLevel() const {
+    return std::ranges::adjacent_find(triangles, std::ranges::not_equal_to{}, [](const Triangle& t) { return t.subdivisionLevel(); }) == triangles.end();
 }

@@ -12,7 +12,8 @@ RayTraceShader::RayTraceShader(
     const LPCWSTR& intersectionFile,
     const std::vector<std::pair<BufferType, int>>& buffersLocal,
     const std::vector<std::pair<BufferType, int>>& buffersGlobal,
-    const ComPtr<ID3D12Device>& d
+    const ComPtr<ID3D12Device>& d,
+    const bool uniformSubDivLvl
 ) {
     d->QueryInterface(IID_PPV_ARGS(&device));
 
@@ -21,10 +22,10 @@ RayTraceShader::RayTraceShader(
     DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&dxcUtils));
     DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&dxcCompiler));
 
-    compileShader(dxcCompiler, dxcUtils, rayGenFile);
-    compileShader(dxcCompiler, dxcUtils, missFile);
-    compileShader(dxcCompiler, dxcUtils, closestHitFile);
-    compileShader(dxcCompiler, dxcUtils, intersectionFile);
+    compileShader(dxcCompiler, dxcUtils, rayGenFile, false);
+    compileShader(dxcCompiler, dxcUtils, missFile, false);
+    compileShader(dxcCompiler, dxcUtils, closestHitFile, false);
+    compileShader(dxcCompiler, dxcUtils, intersectionFile, uniformSubDivLvl);
 
     if(!buffersLocal.empty()) initBuffers(buffersLocal, LOCAL);
     if(!buffersGlobal.empty()) initBuffers(buffersGlobal, GLOBAL);
@@ -45,16 +46,17 @@ RayTraceShader::RayTraceShader(
     descriptorSize = d->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
-void RayTraceShader::compileShader(const ComPtr<IDxcCompiler3>& compiler, const ComPtr<IDxcUtils>& utils, const LPCWSTR& shaderFile) {
+void RayTraceShader::compileShader(const ComPtr<IDxcCompiler3>& compiler, const ComPtr<IDxcUtils>& utils, const LPCWSTR& shaderFile, const bool uniformSubDivLvl) {
     ComPtr<IDxcBlobEncoding> shaderSource;
     utils->LoadFile(shaderFile, nullptr, &shaderSource);
 
-    LPCWSTR arguments[] = {
+    std::vector arguments = {
         L"-T", L"lib_6_6",
         L"-E", L"main",
         L"-Zi",
         L"-Qembed_debug",
     };
+    if(uniformSubDivLvl) arguments.push_back(L"-DUNIFORM_SUBDIV_LVL");
 
     DxcBuffer sourceBuffer = {};
     sourceBuffer.Ptr = shaderSource->GetBufferPointer();
@@ -62,7 +64,7 @@ void RayTraceShader::compileShader(const ComPtr<IDxcCompiler3>& compiler, const 
     sourceBuffer.Encoding = DXC_CP_UTF8;
 
     ComPtr<IDxcResult> result;
-    compiler->Compile(&sourceBuffer, arguments, _countof(arguments), nullptr, IID_PPV_ARGS(&result));
+    compiler->Compile(&sourceBuffer, arguments.data(), arguments.size(), nullptr, IID_PPV_ARGS(&result));
 
     ComPtr<IDxcBlobUtf8> errors;
     result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);

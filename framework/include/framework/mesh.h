@@ -5,6 +5,7 @@
 #include "TransformationChannel.h"
 #include <vector>
 #include "../../src/Triangle2D.h"
+#include "../../src/TriangleData.h"
 DISABLE_WARNINGS_PUSH()
 #include <glm/vec2.hpp>
 DISABLE_WARNINGS_POP()
@@ -12,6 +13,7 @@ DISABLE_WARNINGS_POP()
 struct uVertex {
 	glm::vec3 position;
 	glm::vec3 displacement;
+	bool present; //When neighbouring triangles have different subdivision levels, micro-vertices are not always present on the edge
 };
 
 struct Triangle {
@@ -21,6 +23,8 @@ struct Triangle {
 
 	[[nodiscard]] std::vector<glm::vec3> baryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C) const;
 	static glm::vec3 computeBaryCoords(const glm::vec3& A, const glm::vec3& B, const glm::vec3& C, const glm::vec3& pos);
+
+	[[nodiscard]] int subdivisionLevel() const;
 };
 
 struct Vertex {
@@ -65,10 +69,10 @@ public:
 	[[nodiscard]] std::vector<glm::uvec3> baseTriangleIndices() const;
 	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const; //Contains base vertices + micro vertices
 
-	[[nodiscard]] int numberOfVerticesOnEdge() const; //Computes the number of (micro) vertices on an edge
-	[[nodiscard]] int subdivisionLevel() const; //Computes the subdivision level of the triangles (same for each triangle)
+	[[nodiscard]] int numberOfVerticesOnEdge(const Triangle& triangle) const; //Computes the number of (micro) vertices on an edge given a triangle
 
-	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<int>& offsets) const; //Compute hierarchical minimum and maximum displacements
+	//Compute hierarchical minimum and maximum displacements (not lowest subdivision level)
+	[[nodiscard]] std::vector<glm::vec2> minMaxDisplacements(std::vector<TriangleData>& tData) const;
 
 	//Compute delta for each hierarchical triangle in 2D. Delta represents a scalar by how much to expand the edges to include micro-vertices of future subdivision levels.
 	//So if we have a displaced triangle, and we project it onto the base triangle's plane, we compute 3 vertex positions that bounds all micro-vertices in that triangle (also that of
@@ -76,4 +80,11 @@ public:
 	//We return a vector that contains deltas hierarchically, but do not store the lowest subdivision level. So if a triangle has subdivision level 2, a total of 5 deltas will be
 	//made for a single triangle. One delta for level 0, and four deltas for level 1.
 	[[nodiscard]] std::vector<float> triangleDeltas(const std::vector<int>& dOffsets) const;
+
+	//For each micro-vertex in each triangle, we compute the displacement scales.
+	//The displacement scale should be multiplied with the (interpolated) displacement direction to get the displacement vector
+	std::vector<float> computeDisplacementScales(std::vector<TriangleData>& tData) const;
+
+	//Returns true if all triangles of the mesh have the same subdivision level. False if not
+	[[nodiscard]] bool hasUniformSubdivisionLevel() const;
 };
