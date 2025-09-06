@@ -71,7 +71,8 @@ public:
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
                {{SRV, 6}, {UAV, 1}, {CBV, 1}},
-               device
+               device,
+               mesh[0].cpuMesh.hasUniformSubdivisionLevel()
            );
 
             rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
