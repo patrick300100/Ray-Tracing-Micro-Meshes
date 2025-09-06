@@ -185,7 +185,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         {
             if(io.WantCaptureKeyboard) break;
 
-            int action = (msg == WM_KEYDOWN) ? GLFW_PRESS : GLFW_RELEASE;
+            int action = (msg == WM_KEYDOWN) ? WM_KEYDOWN : WM_KEYUP;
             int key = static_cast<int>(wParam);
             int scancode = 0; // Optional: can use MapVirtualKey if needed
             int mods = 0;     // Optional: get with GetKeyState(VK_SHIFT), etc.

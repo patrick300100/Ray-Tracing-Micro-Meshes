@@ -8,6 +8,7 @@ cbuffer Camera : register(b0) {
 
 RaytracingAccelerationStructure scene : register(t0);
 RWTexture2D<float4> outputTexture : register(u0);
+RWTexture2D<float4> screenshotTexture : register(u1);
 
 [shader("raygeneration")]
 void main() {

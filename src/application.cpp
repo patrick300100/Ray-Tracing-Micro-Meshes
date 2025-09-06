@@ -70,7 +70,7 @@ public:
                RESOURCE_ROOT L"shaders/closesthit.hlsl",
                RESOURCE_ROOT L"shaders/intersection.hlsl",
                {},
-               {{SRV, 6}, {UAV, 1}, {CBV, 1}},
+               {{SRV, 6}, {UAV, 2}, {CBV, 1}},
                device,
                mesh[0].cpuMesh.hasUniformSubdivisionLevel()
            );
@@ -116,13 +116,7 @@ public:
 
 
             //Creating output texture
-            auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-                DXGI_FORMAT_R8G8B8A8_UNORM,
-                dimensions.x,
-                dimensions.y,
-                1,
-                1
-            );
+            auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, dimensions.x, dimensions.y, 1, 1);
             texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
             const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
@@ -136,6 +130,20 @@ public:
                 IID_PPV_ARGS(&raytracingOutput));
 
             rtShader.createOutputUAV(raytracingOutput);
+
+            //Create screenshot texture
+            auto screenshotTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 3840, 2160, 1, 1);
+            screenshotTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+            device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &screenshotTexDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr,
+                IID_PPV_ARGS(&screenshotOutput));
+
+            rtShader.createOutputUAV(screenshotOutput);
 
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
 
@@ -209,6 +217,11 @@ public:
         mvBuffer = UploadBuffer<glm::mat4>(device, 1, true);
         displacementBuffer = UploadBuffer<float>(device, 1, true);
         cameraPosBuffer = UploadBuffer<glm::vec3>(device, 1, true);
+
+        //When user presses 'C', we want to take a screenshot of the current frame
+        window.registerKeyCallback([this](int key, int scancode, int action, int mods) {
+            if(key == 'C' && action == WM_KEYUP) takeScreenshot = true;
+        });
     }
 
     void render() {
@@ -324,6 +337,7 @@ private:
     UploadBuffer<glm::vec3> cameraPosBuffer;
 
     ComPtr<ID3D12Resource> raytracingOutput;
+    ComPtr<ID3D12Resource> screenshotOutput;
     RayTraceShader rtShader, rtTriangleShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
     DefaultBuffer<TriangleData> triangleData;
@@ -331,6 +345,8 @@ private:
     DefaultBuffer<RayTraceVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<float> deltaBuffer;
+
+    bool takeScreenshot = false;
 
     void menu() {
         ImGui::Begin("Window");
