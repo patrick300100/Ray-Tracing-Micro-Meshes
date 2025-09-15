@@ -132,7 +132,7 @@ public:
             rtShader.createOutputUAV(raytracingOutput);
 
             //Create screenshot texture
-            auto screenshotTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 3840, 2160, 1, 1);
+            auto screenshotTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 3840, 3840, 1, 1);
             screenshotTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
             device->CreateCommittedResource(
@@ -265,6 +265,13 @@ public:
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
             invViewProjBuffer.upload({invViewProj});
 
+            if(takeScreenshot) {
+                screenshotBuffer.upload({true});
+
+                rtShader.dispatchDesc.Width = 3840;
+                rtShader.dispatchDesc.Height = 3840;
+            }
+
             swapChainCS.reset();
 
             swapChainCS.getCommandList()->SetPipelineState1(rtShader.pipelineStateObject.Get());
@@ -299,6 +306,16 @@ public:
             swapChainCS.execute(device);
 
             swapChain->Present(1, 0);
+
+            if(takeScreenshot) {
+                takeScreenshot = false;
+                screenshotBuffer.upload({false});
+
+                //Reset render dimensions
+                const auto dimensions = window.getRenderDimension();
+                rtShader.dispatchDesc.Width = dimensions.x;
+                rtShader.dispatchDesc.Height = dimensions.y;
+            }
         }
     }
 
