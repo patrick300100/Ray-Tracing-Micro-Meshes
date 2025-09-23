@@ -443,7 +443,7 @@ bool rayTraceTriangle(float3 v0, float3 v1, float3 v2) {
 }
 
 // Ray trace a micro mesh triangle (a triangle which can be subdivided).
-// The idea was to use recursion, but recursion is now allowed in shaders.
+// The idea was to use recursion, but recursion is not allowed in shaders.
 // So we simulate recursion by converting it to a loop-based approach and manually creating a call stack.
 // @param rootTri: the base triangle in 2D
 // @param ray: the ray in 2D

@@ -38,7 +38,10 @@ struct RayTraceVertex {
 
 class Application {
 public:
-    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath): window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState) {
+    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath):
+        window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState),
+        projectionMatrix(glm::perspective(glm::radians(80.0f), window.getAspectRatio(), 0.1f, 1000.0f))
+    {
         createDevice();
 
         swapChainCS = CommandSender(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
@@ -338,7 +341,7 @@ private:
 
     std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 
-    glm::mat4 projectionMatrix = glm::perspective(glm::radians(80.0f), 1.0f, 0.1f, 1000.0f);
+    glm::mat4 projectionMatrix;
     glm::mat4 modelMatrix { 1.0f };
 
     struct {
