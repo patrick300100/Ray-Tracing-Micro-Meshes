@@ -78,9 +78,9 @@ StructuredBuffer<uint3> indices : register(t2);
 void main(inout Payload payload, in Attributes attribs) {
     uint3 vertexIndices = indices[PrimitiveIndex()];
 
-    float3 v0Pos = vertices[vertexIndices.x].position + vertices[vertexIndices.x].direction;
-    float3 v1Pos = vertices[vertexIndices.y].position + vertices[vertexIndices.y].direction;
-    float3 v2Pos = vertices[vertexIndices.z].position + vertices[vertexIndices.z].direction;
+    float3 v0Pos = vertices[vertexIndices.x].position;
+    float3 v1Pos = vertices[vertexIndices.y].position;
+    float3 v2Pos = vertices[vertexIndices.z].position;
 
     float3 edge1 = v1Pos - v0Pos;
     float3 edge2 = v2Pos - v0Pos;

@@ -67,7 +67,9 @@ public:
 	glm::mat4 globalTransform(float animTime, int index);
 	[[nodiscard]] float animationDuration() const;
 	[[nodiscard]] std::vector<glm::uvec3> baseTriangleIndices() const;
-	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const; //Contains base vertices + micro vertices
+
+	//Contains base vertices + micro vertices. Note that the returned vertices are already displaced
+	[[nodiscard]] std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> allTriangles() const;
 
 	[[nodiscard]] int numberOfVerticesOnEdge(const Triangle& triangle) const; //Computes the number of (micro) vertices on an edge given a triangle
 

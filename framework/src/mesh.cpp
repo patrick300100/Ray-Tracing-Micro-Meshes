@@ -124,7 +124,7 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
                 const auto bc = t.computeBaryCoords(bv0.position, bv1.position, bv2.position, uv.position);
 
                 Vertex v {
-                    .position = uv.position,
+                    .position = uv.position + uv.displacement,
                     .normal = bc.x * bv0.normal + bc.y * bv1.normal + bc.z * bv2.normal, //interpolated normal
                     .direction = uv.displacement,
                     .baseBoneIndices0 = bv0.boneIndices,
