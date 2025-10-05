@@ -174,7 +174,8 @@ public:
         //        RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
         //        {},
         //        {{SRV, 3}, {UAV, 1}, {CBV, 1}},
-        //        device
+        //        device,
+        //        mesh[0].cpuMesh.hasUniformSubdivisionLevel()
         //     );
         //
         //     rtTriangleShader.createAccStrucSRV(mesh[0].getTLASBuffer());
