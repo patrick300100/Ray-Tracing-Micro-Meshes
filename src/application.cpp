@@ -173,7 +173,7 @@ public:
         //        RESOURCE_ROOT L"shaders/closesthitTriangle.hlsl",
         //        RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
         //        {},
-        //        {{SRV, 3}, {UAV, 1}, {CBV, 1}},
+        //        {{SRV, 3}, {UAV, 2}, {CBV, 2}},
         //        device,
         //        mesh[0].cpuMesh.hasUniformSubdivisionLevel()
         //     );
@@ -207,9 +207,27 @@ public:
         //
         //     rtTriangleShader.createOutputUAV(raytracingOutput);
         //
+        //     //Create screenshot texture
+        //     auto screenshotTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 3840, 3840, 1, 1);
+        //     screenshotTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        //
+        //     device->CreateCommittedResource(
+        //         &heapProps,
+        //         D3D12_HEAP_FLAG_NONE,
+        //         &screenshotTexDesc,
+        //         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        //         nullptr,
+        //         IID_PPV_ARGS(&screenshotOutput));
+        //
+        //     rtTriangleShader.createOutputUAV(screenshotOutput);
+        //
         //
         //     invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
         //     rtTriangleShader.createCBV(invViewProjBuffer.getBuffer());
+        //
+        //     screenshotBuffer = UploadBuffer<int>(device, 1, true);
+        //     screenshotBuffer.upload({false});
+        //     rtTriangleShader.createCBV(screenshotBuffer.getBuffer());
         //
         //     rtTriangleShader.createTrianglePipeline();
         //     rtTriangleShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
