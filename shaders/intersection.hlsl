@@ -185,7 +185,7 @@ float3 computeDisplacement(Vertex2D v, float3 directions[3], int dOffset) {
 }
 
 //Creates a displaced triangle by moving the undisplaced vertex positions on the plane.
-//This is equivalent to unprojecting the vertices to 3D space, applying displacements, and projecting them back to the plane.
+//This is equivalent to unprojecting the vertices to 3D space, applying displacements, and projecting them orthogonally back to the plane.
 // @param triVerts: the vertices of the triangle
 // @param directions: the displacement directions of the base triangle
 // @param dOffset: the displacement offset into the displacement buffer
