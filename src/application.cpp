@@ -31,7 +31,7 @@ DISABLE_WARNINGS_POP()
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-struct RayTraceVertex {
+struct BaseVertex {
     glm::vec3 position;
     glm::vec3 direction;
 };
@@ -81,13 +81,13 @@ public:
             rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
 
 
-            std::vector<RayTraceVertex> vertices;
-            vertices.reserve(mesh[0].cpuMesh.vertices.size());
-            std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(vertices), [](const Vertex& v) { return RayTraceVertex{v.position, v.direction}; });
+            std::vector<BaseVertex> baseVertices;
+            baseVertices.reserve(mesh[0].cpuMesh.vertices.size());
+            std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(baseVertices), [](const Vertex& v) { return BaseVertex{v.position, v.direction}; });
 
-            vertexBuffer = DefaultBuffer<RayTraceVertex>(device, vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            vertexBuffer.upload(vertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<RayTraceVertex>(vertexBuffer.getBuffer());
+            vertexBuffer = DefaultBuffer<BaseVertex>(device, baseVertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            vertexBuffer.upload(baseVertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<BaseVertex>(vertexBuffer.getBuffer());
 
             const auto cpuMesh = mesh[0].cpuMesh;
 
@@ -332,7 +332,7 @@ private:
     UploadBuffer<glm::mat4> invViewProjBuffer;
     DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<float> displacementScalesBuffer;
-    DefaultBuffer<RayTraceVertex> vertexBuffer;
+    DefaultBuffer<BaseVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<float> deltaBuffer;
 
