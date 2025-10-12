@@ -215,39 +215,9 @@ public:
         cameraPosBuffer = UploadBuffer<glm::vec3>(device, 1, true);
     }
 
-    void render() {
-        const glm::mat4 mvMatrix = trackball->viewMatrix() * modelMatrix;
-        const glm::mat4 mvpMatrix = projectionMatrix * mvMatrix;
-
-        const auto bTs = mesh[0].cpuMesh.boneTransformations(gui.animation.time); //bone transformations
-
-        boneBuffer.upload(bTs);
-        gpuState.setConstantBuffer(0,  boneBuffer.getBuffer());
-
-        mvpBuffer.upload({glm::transpose(mvpMatrix)});
-        gpuState.setConstantBuffer(1,  mvpBuffer.getBuffer());
-
-        mvBuffer.upload({glm::transpose(mvMatrix)});
-        gpuState.setConstantBuffer(2,  mvBuffer.getBuffer());
-
-        displacementBuffer.upload({gui.displace});
-        gpuState.setConstantBuffer(3, displacementBuffer.getBuffer());
-
-        cameraPosBuffer.upload({trackball->position()});
-        gpuState.setConstantBuffer(4, cameraPosBuffer.getBuffer());
-
-        gpuState.drawMesh(mesh[0].getVertexBufferView(), mesh[0].getIndexBufferView(), mesh[0].getIndexCount());
-    }
-
     void update() {
         while (window.shouldClose()) {
             window.updateInput();
-            //Window::prepareFrame();
-
-            //if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
-
-            //menu();
-            //gpuState.renderFrame(window.getBackgroundColor(), window.getRenderDimension(), [this] { render(); }, skinningShader);
 
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
             invViewProjBuffer.upload({invViewProj});
@@ -311,16 +281,6 @@ private:
     glm::mat4 projectionMatrix;
     glm::mat4 modelMatrix { 1.0f };
 
-    struct {
-        bool wireframe = false;
-        float displace = 0.0f;
-
-        struct {
-            float time = 0.0f;
-            bool pause = false;
-        } animation;
-    } gui;
-
     UploadBuffer<glm::mat4> boneBuffer;
     UploadBuffer<glm::mat4> mvpBuffer;
     UploadBuffer<glm::mat4> mvBuffer;
@@ -335,33 +295,6 @@ private:
     DefaultBuffer<BaseVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<float> deltaBuffer;
-
-    void menu() {
-        ImGui::Begin("Window");
-
-        if(ImGui::BeginTabBar("MainTabs")) {
-            if(ImGui::BeginTabItem("µMesh")) {
-                ImGui::Checkbox("Wireframe", &gui.wireframe);
-                ImGui::SliderFloat("Displace", &gui.displace, 0.0f, 1.0f);
-
-                ImGui::EndTabItem();
-            }
-
-            if(ImGui::BeginTabItem("Animation")) {
-                ImGui::Checkbox("Pause", &gui.animation.pause);
-
-                ImGui::BeginDisabled(!gui.animation.pause);
-                ImGui::SliderFloat("Time", &gui.animation.time, 0.0f, mesh[0].cpuMesh.animationDuration() - 0.001f, "%.3f");
-                ImGui::EndDisabled();
-
-                ImGui::EndTabItem();
-            }
-
-            ImGui::EndTabBar();
-        }
-
-        ImGui::End();
-    }
 
     /**
      * @return time in seconds since application launched (actually, since the first time we call this function, but we
