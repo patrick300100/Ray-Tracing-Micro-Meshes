@@ -16,7 +16,7 @@
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-Microsoft::WRL::ComPtr<IDXGISwapChain3> GPUState::get_swap_chain() const {
+Microsoft::WRL::ComPtr<IDXGISwapChain3> GPUState::getSwapChain() const {
     return swapChain;
 }
 
@@ -90,7 +90,6 @@ bool GPUState::createDevice(const ComPtr<ID3D12Device5>& d, const ComPtr<IDXGISw
 
 void GPUState::cleanupDevice() {
     cleanupRenderTarget();
-    if(swapChainWaitableObject != nullptr) { CloseHandle(swapChainWaitableObject); }
     for(auto& fc : frameContext) {
         if(fc.commandAllocator) fc.commandAllocator.Reset();
     }

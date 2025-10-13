@@ -184,7 +184,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             if(wParam != SIZE_MINIMIZED) {
                 windowData->gpuState->waitForLastSubmittedFrame();
                 windowData->gpuState->cleanupRenderTarget();
-                HRESULT result = windowData->gpuState->get_swap_chain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
+                HRESULT result = windowData->gpuState->getSwapChain()->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT);
                 assert(SUCCEEDED(result) && "Failed to resize swapchain.");
                 windowData->gpuState->createRenderTarget();
             }
