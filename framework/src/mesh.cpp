@@ -17,10 +17,6 @@ struct VertexHash {
         hash_combine(seed, v.normal.y);
         hash_combine(seed, v.normal.z);
 
-        hash_combine(seed, v.baryCoords.x);
-        hash_combine(seed, v.baryCoords.y);
-        hash_combine(seed, v.baryCoords.z);
-
         return seed;
     }
 
@@ -79,7 +75,6 @@ std::pair<std::vector<Vertex>, std::vector<glm::uvec3>> Mesh::allTriangles() con
                     .position = uv.position + uv.displacement,
                     .normal = bc.x * bv0.normal + bc.y * bv1.normal + bc.z * bv2.normal, //interpolated normal
                     .direction = uv.displacement,
-                    .baryCoords = bc
                 };
 
                 if(auto iter = vertexCache.find(v); iter != vertexCache.end()) {

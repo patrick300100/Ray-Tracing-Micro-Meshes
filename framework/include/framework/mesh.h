@@ -30,7 +30,6 @@ struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
 	glm::vec3 direction;
-	glm::vec3 baryCoords;
 
 	[[nodiscard]] bool operator==(const Vertex&) const noexcept = default;
 };
