@@ -53,32 +53,6 @@ void Window::updateInput() {
     }
 }
 
-void Window::renderToImage(const std::filesystem::path& filePath, const bool flipY) const {
-    std::vector <GLubyte> pixels;
-    pixels.reserve (4 * windowSize.x * windowSize.y);
-
-    glReadPixels(0, 0, windowSize.x, windowSize.y, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-
-    std::string filePathString = filePath.string();
-
-    // flips Y axis
-    if(flipY) {
-        // swap entire lines (if height is odd will not touch middle line)
-        for(int line = 0; line != windowSize.y/2; ++line) {
-               std::swap_ranges(pixels.begin() + 4 * windowSize.x * line,
-                pixels.begin() + 4 * windowSize.x * (line + 1),
-                pixels.begin() + 4 * windowSize.x * (windowSize.y - line - 1));
-        }
-    }
-
-    if((filePath.extension()).compare(".bmp") == 0) {
-        stbi_write_bmp(filePathString.c_str(), windowSize.x, windowSize.y, 4, pixels.data());
-    }
-    else if((filePath.extension()).compare(".png") == 0) {
-        stbi_write_png(filePathString.c_str(), windowSize.x, windowSize.y, 4, pixels.data(), 4*windowSize.x);
-    }
-}
-
 void Window::registerKeyCallback(KeyCallback&& callback) {
     m_keyCallbacks.push_back(std::move(callback));
 }
@@ -245,8 +219,4 @@ glm::uvec2 Window::getRenderDimension() const {
     int h = clientRect.bottom - clientRect.top;
 
     return {w, h};
-}
-
-glm::vec4 Window::getBackgroundColor() const {
-    return backgroundColor;
 }

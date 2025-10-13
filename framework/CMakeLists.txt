@@ -25,7 +25,6 @@ else()
 		"src/imguizmo.cpp"
 		"src/ImGuizmo/ImGuizmo.cpp"
 		"src/TinyGLTFLoader.cpp"
-		"src/MeshIterator.cpp"
 		"src/mesh.cpp"
 	)
 	target_include_directories(CGFramework PRIVATE "include/framework/" PUBLIC "include/")

@@ -23,8 +23,6 @@ public:
 
 	void updateInput();
 
-	void renderToImage(const std::filesystem::path& filePath, bool flipY = false) const; // renders the output to an image
-
 	using KeyCallback = std::function<void(int key, int scancode, int action, int mods)>;
 	void registerKeyCallback(KeyCallback&&);
 	using CharCallback = std::function<void(unsigned unicodeCodePoint)>;
@@ -78,8 +76,6 @@ public:
 	 * bar at the top and possible borders on the side. This is also known as the client area.
 	 */
 	[[nodiscard]] glm::uvec2 getRenderDimension() const;
-
-	[[nodiscard]] glm::vec4 getBackgroundColor() const;
 };
 
 struct WindowData {
