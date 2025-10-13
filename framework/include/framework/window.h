@@ -49,8 +49,6 @@ public:
 	[[nodiscard]] float getAspectRatio() const;
 	[[nodiscard]] float getDpiScalingFactor() const;
 
-	static void prepareFrame();
-
 private:
 	WNDCLASSEXW wc;
 	HWND hwnd;

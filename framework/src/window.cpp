@@ -2,8 +2,6 @@
 #include <imgui/imgui.h>
 #undef IMGUI_IMPL_OPENGL_LOADER_GLEW
 #define IMGUI_IMPL_OPENGL_LOADER_GLAD 1
-#include <imgui/imgui_impl_win32.h>
-#include <imgui/imgui_impl_dx12.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <windowsx.h>
@@ -30,29 +28,11 @@ Window::Window(std::string_view title, const glm::ivec2& wSize, GPUState* gpuSta
     ShowWindow(hwnd, SW_SHOWDEFAULT);
     UpdateWindow(hwnd);
 
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-    //ImGui::StyleColorsLight();
-
-    // Setup Platform/Renderer backends
-    ImGui_ImplWin32_Init(hwnd);
-
     auto* data = new WindowData{this, gpuStatePtr};
     SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(data));
 }
 
 Window::~Window() {
-    ImGui_ImplDX12_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
-
     DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, wc.hInstance);
 }
@@ -172,19 +152,13 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
 // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
 LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
-
     auto* windowData = reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
     if(!windowData) return DefWindowProcW(hWnd, msg, wParam, lParam);
-
-    const ImGuiIO& io = ImGui::GetIO();
 
     switch(msg) {
         case WM_KEYDOWN:
         case WM_KEYUP:
         {
-            if(io.WantCaptureKeyboard) break;
-
             int action = (msg == WM_KEYDOWN) ? GLFW_PRESS : GLFW_RELEASE;
             int key = static_cast<int>(wParam);
             int scancode = 0; // Optional: can use MapVirtualKey if needed
@@ -196,8 +170,6 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
         case WM_CHAR:
         {
-            if(io.WantCaptureKeyboard) break;
-
             auto codepoint = static_cast<unsigned>(wParam);
             for(const auto& cb : windowData->window->m_charCallbacks) cb(codepoint);
             break;
@@ -208,8 +180,6 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_RBUTTONDOWN:
         case WM_RBUTTONUP:
         {
-            if(io.WantCaptureMouse) break;
-
             int button = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? GLFW_MOUSE_BUTTON_LEFT : GLFW_MOUSE_BUTTON_RIGHT;
             int action = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) ? GLFW_PRESS : GLFW_RELEASE;
             int mods = 0; // Optional modifier keys
@@ -220,8 +190,6 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
         case WM_MOUSEMOVE:
         {
-            if(io.WantCaptureMouse) break;
-
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
             glm::vec2 pos = glm::vec2(x, windowData->window->windowSize.y - 1 - y);
@@ -232,8 +200,6 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
         case WM_MOUSEWHEEL:
         {
-            if(io.WantCaptureMouse) break;
-
             float deltaY = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
             glm::vec2 offset = glm::vec2(0, deltaY);
 
@@ -262,13 +228,6 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
     }
 
     return DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-void Window::prepareFrame() {
-    // Start the Dear ImGui frame
-    ImGui_ImplDX12_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
 }
 
 HWND Window::getHWND() const {

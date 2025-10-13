@@ -108,9 +108,9 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuM
 }
 
 GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
-    //wfDraw(std::move(other.wfDraw)),
     vertexBufferView(other.vertexBufferView),
     indexBufferView(other.indexBufferView),
+    nVertices(other.nVertices),
     nIndices(other.nIndices),
     vertexBuffer(std::move(other.vertexBuffer)),
     indexBuffer(std::move(other.indexBuffer)),
@@ -123,13 +123,13 @@ GPUMesh::GPUMesh(GPUMesh&& other) noexcept:
 
 GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     if(this != &other) {
-        //wfDraw = std::move(other.wfDraw);
         cpuMesh = std::move(other.cpuMesh);
         vertexBufferView = other.vertexBufferView;
         indexBufferView = other.indexBufferView;
         vertexBuffer = std::move(other.vertexBuffer);
         indexBuffer = std::move(other.indexBuffer);
         AABBs = std::move(other.AABBs);
+        nVertices = other.nVertices;
         nIndices = other.nIndices;
         blasBuffer = std::move(other.blasBuffer);
         tlasBuffer = std::move(other.tlasBuffer);
@@ -138,8 +138,7 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const Microsoft::WRL::ComPtr<ID3D12Device5>& device) {
-    if(!std::filesystem::exists(animFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", animFilePath.string().c_str()));
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device) {
     if(!std::filesystem::exists(umeshFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", umeshFilePath.string().c_str()));
 
     GLTFReadInfo read_micromesh;
@@ -151,23 +150,11 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& animF
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(animFilePath, umeshFilePath, read_micromesh).toMesh();
+    std::vector<Mesh> subMeshes = TinyGLTFLoader(umeshFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
     for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device); }
 
     return gpuMeshes;
-}
-
-void GPUMesh::drawWireframe(const glm::mat4& mvp, const float displacementScale) const {
-    glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(mvp));
-    glUniform1f(1, displacementScale);
-    glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.235f, 0.235f, 0.235f, 1.0f)));
-
-    //wfDraw.drawBaseEdges();
-
-    glUniform4fv(2, 1, glm::value_ptr(glm::vec4(0.435f, 0.435f, 0.435f, 0.5f)));
-
-    //wfDraw.drawMicroEdges();
 }
 
 D3D12_VERTEX_BUFFER_VIEW GPUMesh::getVertexBufferView() const {
@@ -266,7 +253,6 @@ void GPUMesh::createTriangleBLAS(const ComPtr<ID3D12Device5>& device, const ComP
     cmdList->ResourceBarrier(1, &uavBarrier);
 }
 
-
 void GPUMesh::createTLAS(
     const ComPtr<ID3D12Device5>& device5,
     const ComPtr<ID3D12GraphicsCommandList4>& cmdList4,
@@ -324,4 +310,3 @@ ComPtr<ID3D12Resource> GPUMesh::getVertexBuffer() const {
 ComPtr<ID3D12Resource> GPUMesh::getIndexBuffer() const {
     return indexBuffer;
 }
-

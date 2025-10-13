@@ -2,7 +2,6 @@
 
 #include <d3d12.h>
 #include <framework/mesh.h>
-#include "WireframeDraw.h"
 #include <filesystem>
 #include <wrl/client.h>
 
@@ -25,8 +24,6 @@ class GPUMesh {
     std::vector<D3D12_RAYTRACING_AABB> AABBs;
     DefaultBuffer<void> blasBuffer;
     DefaultBuffer<void> tlasBuffer;
-
-    //WireframeDraw wfDraw;
 
     //Create BLAS with AABBs
     void createBLAS(
@@ -61,9 +58,7 @@ public:
     GPUMesh& operator=(const GPUMesh&) = delete;
     GPUMesh& operator=(GPUMesh&& other) noexcept;
 
-    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device);
-
-    void drawWireframe(const glm::mat4& mvp, float displacementScale) const;
+    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device);
 
     [[nodiscard]] D3D12_VERTEX_BUFFER_VIEW getVertexBufferView() const;
     [[nodiscard]] D3D12_INDEX_BUFFER_VIEW getIndexBufferView() const;

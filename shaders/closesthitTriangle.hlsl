@@ -56,18 +56,7 @@ struct Vertex
 {
     float3 position;
     float3 normal;
-    int4 boneIndices;
-    float4 boneWeights;
     float3 direction;
-
-    // Only applicable for micro vertices
-    int4 baseBoneIndices0;
-    int4 baseBoneIndices1;
-    int4 baseBoneIndices2;
-    float4 baseBoneWeights0;
-    float4 baseBoneWeights1;
-    float4 baseBoneWeights2;
-
     float3 baryCoords;
 };
 

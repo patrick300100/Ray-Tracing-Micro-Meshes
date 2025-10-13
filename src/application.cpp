@@ -38,7 +38,7 @@ struct BaseVertex {
 
 class Application {
 public:
-    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath):
+    explicit Application(const std::filesystem::path& umeshPath):
         window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState),
         projectionMatrix(glm::perspective(glm::radians(80.0f), window.getAspectRatio(), 0.1f, 1000.0f))
     {
@@ -55,12 +55,7 @@ public:
 
         const auto dimensions = window.getRenderDimension();
 
-        gpuState.initImGui();
-        gpuState.createDepthBuffer(dimensions);
-
-        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, device);
-
-        skinningShader = RasterizationShader(L"shaders/skinningVS.hlsl", L"shaders/skinningPS.hlsl", 5, device);
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshPath, device);
 
         CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
         cw.reset();
@@ -205,14 +200,6 @@ public:
         //     cw.execute(device);
         //     cw.reset();
         // }
-
-        gpuState.createPipeline(skinningShader);
-
-        boneBuffer = UploadBuffer<glm::mat4>(device, 10, true);
-        mvpBuffer = UploadBuffer<glm::mat4>(device, 1, true);
-        mvBuffer = UploadBuffer<glm::mat4>(device, 1, true);
-        displacementBuffer = UploadBuffer<float>(device, 1, true);
-        cameraPosBuffer = UploadBuffer<glm::vec3>(device, 1, true);
     }
 
     void update() {
@@ -272,20 +259,12 @@ private:
     ComPtr<IDXGISwapChain3> swapChain;
     CommandSender swapChainCS; //Command queue and such for the swapchain
 
-    RasterizationShader skinningShader;
-
     std::vector<GPUMesh> mesh;
 
     std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 
     glm::mat4 projectionMatrix;
     glm::mat4 modelMatrix { 1.0f };
-
-    UploadBuffer<glm::mat4> boneBuffer;
-    UploadBuffer<glm::mat4> mvpBuffer;
-    UploadBuffer<glm::mat4> mvBuffer;
-    UploadBuffer<float> displacementBuffer;
-    UploadBuffer<glm::vec3> cameraPosBuffer;
 
     ComPtr<ID3D12Resource> raytracingOutput;
     RayTraceShader rtShader, rtTriangleShader;
@@ -377,39 +356,19 @@ private:
 };
 
 int main(const int argc, char* argv[]) {
+    //The first argument is the path to the .exe file
     if(argc == 1) {
         std::cerr << "Did not specify micro mesh file as program argument";
         return 1;
     }
-    if(argc == 3) { //User specified micro mesh path and animation path
-        const std::filesystem::path umeshPath(argv[1]);
-        const std::filesystem::path umeshAnimPath(argv[2]);
 
-        Application app(umeshPath, umeshAnimPath);
-        app.update();
-    } else {
+    //Introducing scope to make destroy the Application object before we check for live objects
+    {
         const std::filesystem::path umeshPath(argv[1]);
 
-        const auto parentDir = umeshPath.parent_path();
-        const auto filenameStem = umeshPath.stem().string();
-        const auto extension = umeshPath.extension().string();
-
-        //GLTF has 2 file extension: .gltf and .glb. We select which one is present.
-        const auto umeshAnimPathGLTF = parentDir / (filenameStem + "_anim" + ".gltf");
-        const auto umeshAnimPathGLB = parentDir / (filenameStem + "_anim" + ".glb");
-
-        std::filesystem::path umeshAnimPath;
-        if(exists(umeshAnimPathGLTF)) umeshAnimPath = umeshAnimPathGLTF;
-        else if(exists(umeshAnimPathGLB)) umeshAnimPath = umeshAnimPathGLB;
-        else {
-            std::cerr << "Could not find animation data. Remember that it has to be in the same directory.";
-            return 1;
-        }
-
-        Application app(umeshPath, umeshAnimPath);
+        Application app(umeshPath);
         app.update();
     }
-
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
     IDXGIDebug1* pDebug = nullptr;
