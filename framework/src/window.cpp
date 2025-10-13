@@ -22,7 +22,9 @@ Window::Window(std::string_view title, const glm::ivec2& wSize, GPUState* gpuSta
     // Create application window
     wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"MicroMeshWindow", nullptr };
     RegisterClassExW(&wc);
-    hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), WS_OVERLAPPEDWINDOW, 100, 100, wSize.x, wSize.y, nullptr, nullptr, wc.hInstance, nullptr);
+
+    constexpr DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX; //Disable resizing the window
+    hwnd = CreateWindowW(wc.lpszClassName, titleString.c_str(), style, 100, 100, wSize.x, wSize.y, nullptr, nullptr, wc.hInstance, nullptr);
 
     // Show the window
     ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -117,22 +119,13 @@ float Window::getDpiScalingFactor() const {
     return m_dpiScalingFactor;
 }
 
-// Forward declare message handler from imgui_impl_win32.cpp
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-// Win32 message handler
-// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
-// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
-// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
-// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
 LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     auto* windowData = reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
     if(!windowData) return DefWindowProcW(hWnd, msg, wParam, lParam);
 
     switch(msg) {
         case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
+        case WM_KEYUP: {
             int action = (msg == WM_KEYDOWN) ? GLFW_PRESS : GLFW_RELEASE;
             int key = static_cast<int>(wParam);
             int scancode = 0; // Optional: can use MapVirtualKey if needed
@@ -142,8 +135,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             break;
         }
 
-        case WM_CHAR:
-        {
+        case WM_CHAR: {
             auto codepoint = static_cast<unsigned>(wParam);
             for(const auto& cb : windowData->window->m_charCallbacks) cb(codepoint);
             break;
@@ -152,8 +144,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
         case WM_RBUTTONDOWN:
-        case WM_RBUTTONUP:
-        {
+        case WM_RBUTTONUP: {
             int button = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? GLFW_MOUSE_BUTTON_LEFT : GLFW_MOUSE_BUTTON_RIGHT;
             int action = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN) ? GLFW_PRESS : GLFW_RELEASE;
             int mods = 0; // Optional modifier keys
@@ -162,8 +153,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             break;
         }
 
-        case WM_MOUSEMOVE:
-        {
+        case WM_MOUSEMOVE: {
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
             glm::vec2 pos = glm::vec2(x, windowData->window->windowSize.y - 1 - y);
@@ -172,8 +162,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
             break;
         }
 
-        case WM_MOUSEWHEEL:
-        {
+        case WM_MOUSEWHEEL: {
             float deltaY = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
             glm::vec2 offset = glm::vec2(0, deltaY);
 
@@ -199,6 +188,13 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
+        case WM_SETCURSOR: {
+            if (LOWORD(lParam) == HTCLIENT) {
+                SetCursor(LoadCursor(nullptr, IDC_ARROW));
+                return TRUE;
+            }
+            break;
+        }
     }
 
     return DefWindowProcW(hWnd, msg, wParam, lParam);
