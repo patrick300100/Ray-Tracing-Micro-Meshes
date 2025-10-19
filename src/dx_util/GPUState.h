@@ -4,14 +4,9 @@
 #include <dxgi1_4.h>
 #include <imgui/imgui.h>
 #include <wrl/client.h>
-#include <functional>
 #include <glm/vec2.hpp>
-#include <glm/vec4.hpp>
 
-#include "CommandSender.h"
-#include "RasterizationShader.h"
 #include "RayTraceShader.h"
-#include "shader.h"
 
 struct FrameContext {
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator;
@@ -103,16 +98,5 @@ public:
     void waitForLastSubmittedFrame();
     FrameContext* waitForNextFrameResources();
 
-    void initImGui() const;
-
-    [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> get_swap_chain() const;
-
-    void renderFrame(const CommandSender& cs, const glm::vec4& clearColor, const glm::uvec2& dimension, const std::function<void()>& render, const Shader& shader);
-
-    void createDepthBuffer(const glm::uvec2& dimension);
-    void createPipeline(const RasterizationShader& shaders);
-
-    void drawMesh(D3D12_VERTEX_BUFFER_VIEW vbv, D3D12_INDEX_BUFFER_VIEW ibv, UINT nIndices) const;
-
-    void setConstantBuffer(UINT index, const Microsoft::WRL::ComPtr<ID3D12Resource>& bufferPtr) const;
+    [[nodiscard]] Microsoft::WRL::ComPtr<IDXGISwapChain3> getSwapChain() const;
 };

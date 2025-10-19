@@ -19,7 +19,7 @@ public:
      * @param elementCount the number of elements in the buffer
      * @param isConstantBuffer whether the buffer is a constant buffer or not
      */
-    UploadBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const bool isConstantBuffer = false): UploadBuffer(sizeof(T) * elementCount, device, isConstantBuffer) {
+    UploadBuffer(const ComPtr<ID3D12Device>& device, const size_t elementCount, const bool isConstantBuffer = false): UploadBuffer(sizeof(T) * elementCount, device, isConstantBuffer) {
     }
 
     /**

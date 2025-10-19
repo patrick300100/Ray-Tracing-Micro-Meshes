@@ -6,7 +6,6 @@
 #include <windows.h>
 
 #include "CommandSender.h"
-#include "RasterizationShader.h"
 #include "RayTraceShader.h"
 #include "UploadBuffer.h"
 DISABLE_WARNINGS_PUSH()
@@ -31,16 +30,17 @@ DISABLE_WARNINGS_POP()
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-struct RayTraceVertex {
+struct BaseVertex {
     glm::vec3 position;
     glm::vec3 direction;
 };
 
 class Application {
 public:
-    Application(const std::filesystem::path& umeshPath, const std::filesystem::path& umeshAnimPath):
+    Application(const std::filesystem::path& umeshPath, const bool tessellated):
         window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState),
-        projectionMatrix(glm::perspective(glm::radians(80.0f), window.getAspectRatio(), 0.1f, 1000.0f))
+        projectionMatrix(glm::perspective(glm::radians(80.0f), window.getAspectRatio(), 0.1f, 1000.0f)),
+        runTessellated(tessellated)
     {
         createDevice();
 
@@ -55,18 +55,80 @@ public:
 
         const auto dimensions = window.getRenderDimension();
 
-        gpuState.initImGui();
-        gpuState.createDepthBuffer(dimensions);
-
-        mesh = GPUMesh::loadGLTFMeshGPU(umeshAnimPath, umeshPath, device);
-
-        skinningShader = RasterizationShader(L"shaders/skinningVS.hlsl", L"shaders/skinningPS.hlsl", 5, device);
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshPath, device, runTessellated);
 
         CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
         cw.reset();
 
-        //Creating ray tracing shader
-        {
+        if(runTessellated) { //We tessellate the micro-mesh and upload the mesh as a regular mesh to the ray tracer
+            rtShader = RayTraceShader(
+               RESOURCE_ROOT L"shaders/raygen.hlsl",
+               RESOURCE_ROOT L"shaders/miss.hlsl",
+               RESOURCE_ROOT L"shaders/closesthitTriangle.hlsl",
+               RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
+               {},
+               {{SRV, 3}, {UAV, 2}, {CBV, 2}},
+               device,
+               mesh.cpuMesh.hasUniformSubdivisionLevel()
+            );
+
+            rtShader.createAccStrucSRV(mesh.getTLASBuffer());
+
+            rtShader.createSRV<Vertex>(mesh.getVertexBuffer());
+            rtShader.createSRV<glm::uvec3>(mesh.getIndexBuffer());
+
+
+            //Creating output texture
+            auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                dimensions.x,
+                dimensions.y,
+                1,
+                1
+            );
+            texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+            const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+
+            device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &texDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr,
+                IID_PPV_ARGS(&raytracingOutput));
+
+            rtShader.createOutputUAV(raytracingOutput);
+
+            //Create screenshot texture
+            auto screenshotTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 3840, 3840, 1, 1);
+            screenshotTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+            device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &screenshotTexDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr,
+                IID_PPV_ARGS(&screenshotOutput)
+            );
+
+            rtShader.createOutputUAV(screenshotOutput);
+
+
+            invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
+            rtShader.createCBV(invViewProjBuffer.getBuffer());
+
+            screenshotBuffer = UploadBuffer<int>(device, 1, true);
+            screenshotBuffer.upload({false});
+            rtShader.createCBV(screenshotBuffer.getBuffer());
+
+            rtShader.createTrianglePipeline();
+            rtShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
+
+            cw.execute(device);
+            cw.reset();
+        } else { //Ray trace micro-mesh
             rtShader = RayTraceShader(
                RESOURCE_ROOT L"shaders/raygen.hlsl",
                RESOURCE_ROOT L"shaders/miss.hlsl",
@@ -75,21 +137,21 @@ public:
                {},
                {{SRV, 6}, {UAV, 2}, {CBV, 2}},
                device,
-               mesh[0].cpuMesh.hasUniformSubdivisionLevel()
-           );
+               mesh.cpuMesh.hasUniformSubdivisionLevel()
+            );
 
-            rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
+            rtShader.createAccStrucSRV(mesh.getTLASBuffer());
 
 
-            std::vector<RayTraceVertex> vertices;
-            vertices.reserve(mesh[0].cpuMesh.vertices.size());
-            std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(vertices), [](const Vertex& v) { return RayTraceVertex{v.position, v.direction}; });
+            std::vector<BaseVertex> baseVertices;
+            baseVertices.reserve(mesh.cpuMesh.vertices.size());
+            std::ranges::transform(mesh.cpuMesh.vertices, std::back_inserter(baseVertices), [](const Vertex& v) { return BaseVertex{v.position, v.direction}; });
 
-            vertexBuffer = DefaultBuffer<RayTraceVertex>(device, vertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
-            vertexBuffer.upload(vertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            rtShader.createSRV<RayTraceVertex>(vertexBuffer.getBuffer());
+            vertexBuffer = DefaultBuffer<BaseVertex>(device, baseVertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
+            vertexBuffer.upload(baseVertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            rtShader.createSRV<BaseVertex>(vertexBuffer.getBuffer());
 
-            const auto cpuMesh = mesh[0].cpuMesh;
+            const auto cpuMesh = mesh.cpuMesh;
 
             std::vector<TriangleData> tData;
             tData.reserve(cpuMesh.triangles.size());
@@ -165,124 +227,15 @@ public:
             cw.reset();
         }
 
-        //Creating ray tracing shader that ray traces without AABBs
-        // {
-        //     rtTriangleShader = RayTraceShader(
-        //        RESOURCE_ROOT L"shaders/raygen.hlsl",
-        //        RESOURCE_ROOT L"shaders/miss.hlsl",
-        //        RESOURCE_ROOT L"shaders/closesthitTriangle.hlsl",
-        //        RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
-        //        {},
-        //        {{SRV, 3}, {UAV, 2}, {CBV, 2}},
-        //        device,
-        //        mesh[0].cpuMesh.hasUniformSubdivisionLevel()
-        //     );
-        //
-        //     rtTriangleShader.createAccStrucSRV(mesh[0].getTLASBuffer());
-        //
-        //     const auto [vData, iData] = mesh[0].cpuMesh.allTriangles();
-        //     rtTriangleShader.createSRV<Vertex>(mesh[0].getVertexBuffer());
-        //     rtTriangleShader.createSRV<glm::uvec3>(mesh[0].getIndexBuffer());
-        //
-        //
-        //     //Creating output texture
-        //     auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-        //         DXGI_FORMAT_R8G8B8A8_UNORM,
-        //         dimensions.x,
-        //         dimensions.y,
-        //         1,
-        //         1
-        //     );
-        //     texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        //
-        //     const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
-        //
-        //     device->CreateCommittedResource(
-        //         &heapProps,
-        //         D3D12_HEAP_FLAG_NONE,
-        //         &texDesc,
-        //         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        //         nullptr,
-        //         IID_PPV_ARGS(&raytracingOutput));
-        //
-        //     rtTriangleShader.createOutputUAV(raytracingOutput);
-        //
-        //     //Create screenshot texture
-        //     auto screenshotTexDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, 3840, 3840, 1, 1);
-        //     screenshotTexDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        //
-        //     device->CreateCommittedResource(
-        //         &heapProps,
-        //         D3D12_HEAP_FLAG_NONE,
-        //         &screenshotTexDesc,
-        //         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        //         nullptr,
-        //         IID_PPV_ARGS(&screenshotOutput));
-        //
-        //     rtTriangleShader.createOutputUAV(screenshotOutput);
-        //
-        //
-        //     invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
-        //     rtTriangleShader.createCBV(invViewProjBuffer.getBuffer());
-        //
-        //     screenshotBuffer = UploadBuffer<int>(device, 1, true);
-        //     screenshotBuffer.upload({false});
-        //     rtTriangleShader.createCBV(screenshotBuffer.getBuffer());
-        //
-        //     rtTriangleShader.createTrianglePipeline();
-        //     rtTriangleShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
-        //
-        //     cw.execute(device);
-        //     cw.reset();
-        // }
-
-        gpuState.createPipeline(skinningShader);
-
-        boneBuffer = UploadBuffer<glm::mat4>(device, 10, true);
-        mvpBuffer = UploadBuffer<glm::mat4>(device, 1, true);
-        mvBuffer = UploadBuffer<glm::mat4>(device, 1, true);
-        displacementBuffer = UploadBuffer<float>(device, 1, true);
-        cameraPosBuffer = UploadBuffer<glm::vec3>(device, 1, true);
-
         //When user presses 'C', we want to take a screenshot of the current frame
         window.registerKeyCallback([this](int key, int scancode, int action, int mods) {
             if(key == 'C' && action == WM_KEYUP) takeScreenshot = true;
         });
     }
 
-    void render() {
-        const glm::mat4 mvMatrix = trackball->viewMatrix() * modelMatrix;
-        const glm::mat4 mvpMatrix = projectionMatrix * mvMatrix;
-
-        const auto bTs = mesh[0].cpuMesh.boneTransformations(gui.animation.time); //bone transformations
-
-        boneBuffer.upload(bTs);
-        gpuState.setConstantBuffer(0,  boneBuffer.getBuffer());
-
-        mvpBuffer.upload({glm::transpose(mvpMatrix)});
-        gpuState.setConstantBuffer(1,  mvpBuffer.getBuffer());
-
-        mvBuffer.upload({glm::transpose(mvMatrix)});
-        gpuState.setConstantBuffer(2,  mvBuffer.getBuffer());
-
-        displacementBuffer.upload({gui.displace});
-        gpuState.setConstantBuffer(3, displacementBuffer.getBuffer());
-
-        cameraPosBuffer.upload({trackball->position()});
-        gpuState.setConstantBuffer(4, cameraPosBuffer.getBuffer());
-
-        gpuState.drawMesh(mesh[0].getVertexBufferView(), mesh[0].getIndexBufferView(), mesh[0].getIndexCount());
-    }
-
     void update() {
         while (window.shouldClose()) {
             window.updateInput();
-            //Window::prepareFrame();
-
-            //if(!gui.animation.pause) gui.animation.time = std::fmod(getTime(), mesh[0].cpuMesh.animationDuration());
-
-            //menu();
-            //gpuState.renderFrame(window.getBackgroundColor(), window.getRenderDimension(), [this] { render(); }, skinningShader);
 
             glm::mat4 invViewProj = glm::inverse(projectionMatrix * trackball->viewMatrix());
             invViewProjBuffer.upload({invViewProj});
@@ -354,91 +307,25 @@ private:
     ComPtr<IDXGISwapChain3> swapChain;
     CommandSender swapChainCS; //Command queue and such for the swapchain
 
-    RasterizationShader skinningShader;
-
-    std::vector<GPUMesh> mesh;
+    GPUMesh mesh;
 
     std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 
     glm::mat4 projectionMatrix;
-    glm::mat4 modelMatrix { 1.0f };
-
-    struct {
-        bool wireframe = false;
-        float displace = 0.0f;
-
-        struct {
-            float time = 0.0f;
-            bool pause = false;
-        } animation;
-    } gui;
-
-    UploadBuffer<glm::mat4> boneBuffer;
-    UploadBuffer<glm::mat4> mvpBuffer;
-    UploadBuffer<glm::mat4> mvBuffer;
-    UploadBuffer<float> displacementBuffer;
-    UploadBuffer<glm::vec3> cameraPosBuffer;
 
     ComPtr<ID3D12Resource> raytracingOutput;
     ComPtr<ID3D12Resource> screenshotOutput;
-    RayTraceShader rtShader, rtTriangleShader;
+    RayTraceShader rtShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
     UploadBuffer<int> screenshotBuffer;
     DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<float> displacementScalesBuffer;
-    DefaultBuffer<RayTraceVertex> vertexBuffer;
+    DefaultBuffer<BaseVertex> vertexBuffer;
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<float> deltaBuffer;
 
+    bool runTessellated;
     bool takeScreenshot = false;
-
-    void menu() {
-        ImGui::Begin("Window");
-
-        if(ImGui::BeginTabBar("MainTabs")) {
-            if(ImGui::BeginTabItem("µMesh")) {
-                ImGui::Checkbox("Wireframe", &gui.wireframe);
-                ImGui::SliderFloat("Displace", &gui.displace, 0.0f, 1.0f);
-
-                ImGui::EndTabItem();
-            }
-
-            if(ImGui::BeginTabItem("Animation")) {
-                ImGui::Checkbox("Pause", &gui.animation.pause);
-
-                ImGui::BeginDisabled(!gui.animation.pause);
-                ImGui::SliderFloat("Time", &gui.animation.time, 0.0f, mesh[0].cpuMesh.animationDuration() - 0.001f, "%.3f");
-                ImGui::EndDisabled();
-
-                ImGui::EndTabItem();
-            }
-
-            ImGui::EndTabBar();
-        }
-
-        ImGui::End();
-    }
-
-    /**
-     * @return time in seconds since application launched (actually, since the first time we call this function, but we
-     * almost immediately call this function at startup)
-     */
-    static double getTime() {
-        static LARGE_INTEGER frequency;
-        static LARGE_INTEGER start;
-        static bool initialized = false;
-
-        if (!initialized) {
-            QueryPerformanceFrequency(&frequency);
-            QueryPerformanceCounter(&start);
-            initialized = true;
-        }
-
-        LARGE_INTEGER now;
-        QueryPerformanceCounter(&now);
-
-        return static_cast<double>(now.QuadPart - start.QuadPart) / frequency.QuadPart;
-    }
 
     void createDevice() {
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -500,39 +387,26 @@ private:
 };
 
 int main(const int argc, char* argv[]) {
+    //The first argument is the path to the .exe file
     if(argc == 1) {
-        std::cerr << "Did not specify micro mesh file as program argument";
+        std::cerr << "Did not specify micro mesh file as program argument.";
         return 1;
     }
-    if(argc == 3) { //User specified micro mesh path and animation path
+
+    //Introducing scope to make destroy the Application object before we check for live objects
+    {
         const std::filesystem::path umeshPath(argv[1]);
-        const std::filesystem::path umeshAnimPath(argv[2]);
-
-        Application app(umeshPath, umeshAnimPath);
-        app.update();
-    } else {
-        const std::filesystem::path umeshPath(argv[1]);
-
-        const auto parentDir = umeshPath.parent_path();
-        const auto filenameStem = umeshPath.stem().string();
-        const auto extension = umeshPath.extension().string();
-
-        //GLTF has 2 file extension: .gltf and .glb. We select which one is present.
-        const auto umeshAnimPathGLTF = parentDir / (filenameStem + "_anim" + ".gltf");
-        const auto umeshAnimPathGLB = parentDir / (filenameStem + "_anim" + ".glb");
-
-        std::filesystem::path umeshAnimPath;
-        if(exists(umeshAnimPathGLTF)) umeshAnimPath = umeshAnimPathGLTF;
-        else if(exists(umeshAnimPathGLB)) umeshAnimPath = umeshAnimPathGLB;
-        else {
-            std::cerr << "Could not find animation data. Remember that it has to be in the same directory.";
+        if(!std::filesystem::exists(umeshPath)) {
+            std::cerr << "Micro-mesh file does not exist.";
             return 1;
         }
 
-        Application app(umeshPath, umeshAnimPath);
+        bool tessellated = false;
+        if(argc == 3 && std::string(argv[2]) == "-T") tessellated = true;
+
+        Application app(umeshPath, tessellated);
         app.update();
     }
-
 
 #ifdef DX12_ENABLE_DEBUG_LAYER
     IDXGIDebug1* pDebug = nullptr;

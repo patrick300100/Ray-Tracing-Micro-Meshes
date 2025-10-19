@@ -32,8 +32,7 @@ struct TriangleData {
     int minMaxOffset;
 };
 
-//Vertex that is coming from the C++ code
-struct InputVertex {
+struct BaseVertex {
     float3 position;
     float3 direction;
 };
@@ -89,7 +88,7 @@ struct StackElement {
     int level;
 };
 
-StructuredBuffer<InputVertex> vertices : register(t1);
+StructuredBuffer<BaseVertex> vertices : register(t1);
 StructuredBuffer<TriangleData> triangleData : register(t2);
 StructuredBuffer<float> displacementScales : register(t3); //Contains a scalar of how much to displace along the displacement direction
 StructuredBuffer<float2> minMaxDisplacements : register(t4); //Contains (hierarchically) min and max displacements. x component is min displacement, y component is max displacement
@@ -185,7 +184,7 @@ float3 computeDisplacement(Vertex2D v, float3 directions[3], int dOffset) {
 }
 
 //Creates a displaced triangle by moving the undisplaced vertex positions on the plane.
-//This is equivalent to unprojecting the vertices to 3D space, applying displacements, and projecting them back to the plane.
+//This is equivalent to unprojecting the vertices to 3D space, applying displacements, and projecting them orthogonally back to the plane.
 // @param triVerts: the vertices of the triangle
 // @param directions: the displacement directions of the base triangle
 // @param dOffset: the displacement offset into the displacement buffer
@@ -481,9 +480,9 @@ void rayTraceMMTriangle(Triangle2D rootTri, Ray2D ray, Plane p, int dOffset, int
 void main() {
     TriangleData tData = triangleData[PrimitiveIndex()];
 
-    InputVertex v0 = vertices[tData.vIndices.x];
-    InputVertex v1 = vertices[tData.vIndices.y];
-    InputVertex v2 = vertices[tData.vIndices.z];
+    BaseVertex v0 = vertices[tData.vIndices.x];
+    BaseVertex v1 = vertices[tData.vIndices.y];
+    BaseVertex v2 = vertices[tData.vIndices.z];
     float2 v0GridCoordinate = float2(0, 0);
     float2 v1GridCoordinate = float2(tData.nRows - 1, 0);
     float2 v2GridCoordinate = float2(tData.nRows - 1, tData.nRows - 1);
