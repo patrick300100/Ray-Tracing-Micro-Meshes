@@ -57,7 +57,6 @@ struct Vertex
     float3 position;
     float3 normal;
     float3 direction;
-    float3 baryCoords;
 };
 
 StructuredBuffer<Vertex> vertices : register(t1);

@@ -9,10 +9,6 @@
 
 using namespace Microsoft::WRL;
 
-struct MeshLoadingException final : std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
-
 class GPUMesh {
     D3D12_VERTEX_BUFFER_VIEW vertexBufferView = {};
     D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
@@ -51,20 +47,16 @@ class GPUMesh {
 public:
     Mesh cpuMesh;
 
-    GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device);
+    GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device, bool runTessellated);
     GPUMesh(const GPUMesh&) = delete;
     GPUMesh(GPUMesh&& other) noexcept;
 
     GPUMesh& operator=(const GPUMesh&) = delete;
     GPUMesh& operator=(GPUMesh&& other) noexcept;
 
-    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device);
+    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, bool runTessellated);
 
-    [[nodiscard]] D3D12_VERTEX_BUFFER_VIEW getVertexBufferView() const;
-    [[nodiscard]] D3D12_INDEX_BUFFER_VIEW getIndexBufferView() const;
-    [[nodiscard]] UINT getIndexCount() const;
     [[nodiscard]] ComPtr<ID3D12Resource> getTLASBuffer() const;
-    [[nodiscard]] std::vector<D3D12_RAYTRACING_AABB> getAABBs() const;
     [[nodiscard]]ComPtr<ID3D12Resource> getVertexBuffer() const;
     [[nodiscard]] ComPtr<ID3D12Resource> getIndexBuffer() const;
 };

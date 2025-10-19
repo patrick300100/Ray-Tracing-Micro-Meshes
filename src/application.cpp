@@ -38,9 +38,10 @@ struct BaseVertex {
 
 class Application {
 public:
-    explicit Application(const std::filesystem::path& umeshPath):
+    explicit Application(const std::filesystem::path& umeshPath, const bool tessellated):
         window("Micro Meshes", glm::ivec2(1024, 1024), &gpuState),
-        projectionMatrix(glm::perspective(glm::radians(80.0f), window.getAspectRatio(), 0.1f, 1000.0f))
+        projectionMatrix(glm::perspective(glm::radians(80.0f), window.getAspectRatio(), 0.1f, 1000.0f)),
+        runTessellated(tessellated)
     {
         createDevice();
 
@@ -55,13 +56,61 @@ public:
 
         const auto dimensions = window.getRenderDimension();
 
-        mesh = GPUMesh::loadGLTFMeshGPU(umeshPath, device);
+        mesh = GPUMesh::loadGLTFMeshGPU(umeshPath, device, runTessellated);
 
         CommandSender cw(device, D3D12_COMMAND_LIST_TYPE_DIRECT);
         cw.reset();
 
-        //Creating ray tracing shader
-        {
+        if(runTessellated) { //We tessellate the micro-mesh and upload the mesh as a regular mesh to the ray tracer
+            rtShader = RayTraceShader(
+               RESOURCE_ROOT L"shaders/raygen.hlsl",
+               RESOURCE_ROOT L"shaders/miss.hlsl",
+               RESOURCE_ROOT L"shaders/closesthitTriangle.hlsl",
+               RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
+               {},
+               {{SRV, 3}, {UAV, 1}, {CBV, 1}},
+               device,
+               mesh[0].cpuMesh.hasUniformSubdivisionLevel()
+            );
+
+            rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
+
+            rtShader.createSRV<Vertex>(mesh[0].getVertexBuffer());
+            rtShader.createSRV<glm::uvec3>(mesh[0].getIndexBuffer());
+
+
+            //Creating output texture
+            auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                dimensions.x,
+                dimensions.y,
+                1,
+                1
+            );
+            texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+            const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
+
+            device->CreateCommittedResource(
+                &heapProps,
+                D3D12_HEAP_FLAG_NONE,
+                &texDesc,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr,
+                IID_PPV_ARGS(&raytracingOutput));
+
+            rtShader.createOutputUAV(raytracingOutput);
+
+
+            invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
+            rtShader.createCBV(invViewProjBuffer.getBuffer());
+
+            rtShader.createTrianglePipeline();
+            rtShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
+
+            cw.execute(device);
+            cw.reset();
+        } else { //Ray trace the micro-mesh
             rtShader = RayTraceShader(
                RESOURCE_ROOT L"shaders/raygen.hlsl",
                RESOURCE_ROOT L"shaders/miss.hlsl",
@@ -71,7 +120,7 @@ public:
                {{SRV, 6}, {UAV, 1}, {CBV, 1}},
                device,
                mesh[0].cpuMesh.hasUniformSubdivisionLevel()
-           );
+            );
 
             rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
 
@@ -147,59 +196,6 @@ public:
             cw.execute(device);
             cw.reset();
         }
-
-        //Creating ray tracing shader that ray traces without AABBs
-        // {
-        //     rtTriangleShader = RayTraceShader(
-        //        RESOURCE_ROOT L"shaders/raygen.hlsl",
-        //        RESOURCE_ROOT L"shaders/miss.hlsl",
-        //        RESOURCE_ROOT L"shaders/closesthitTriangle.hlsl",
-        //        RESOURCE_ROOT L"shaders/intersection.hlsl", //We will not use this one
-        //        {},
-        //        {{SRV, 3}, {UAV, 1}, {CBV, 1}},
-        //        device,
-        //        mesh[0].cpuMesh.hasUniformSubdivisionLevel()
-        //     );
-        //
-        //     rtTriangleShader.createAccStrucSRV(mesh[0].getTLASBuffer());
-        //
-        //     const auto [vData, iData] = mesh[0].cpuMesh.allTriangles();
-        //     rtTriangleShader.createSRV<Vertex>(mesh[0].getVertexBuffer());
-        //     rtTriangleShader.createSRV<glm::uvec3>(mesh[0].getIndexBuffer());
-        //
-        //
-        //     //Creating output texture
-        //     auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
-        //         DXGI_FORMAT_R8G8B8A8_UNORM,
-        //         dimensions.x,
-        //         dimensions.y,
-        //         1,
-        //         1
-        //     );
-        //     texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        //
-        //     const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
-        //
-        //     device->CreateCommittedResource(
-        //         &heapProps,
-        //         D3D12_HEAP_FLAG_NONE,
-        //         &texDesc,
-        //         D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        //         nullptr,
-        //         IID_PPV_ARGS(&raytracingOutput));
-        //
-        //     rtTriangleShader.createOutputUAV(raytracingOutput);
-        //
-        //
-        //     invViewProjBuffer = UploadBuffer<glm::mat4>(device, 1, true);
-        //     rtTriangleShader.createCBV(invViewProjBuffer.getBuffer());
-        //
-        //     rtTriangleShader.createTrianglePipeline();
-        //     rtTriangleShader.createSBT(dimensions.x, dimensions.y, cw.getCommandList());
-        //
-        //     cw.execute(device);
-        //     cw.reset();
-        // }
     }
 
     void update() {
@@ -264,10 +260,9 @@ private:
     std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 
     glm::mat4 projectionMatrix;
-    glm::mat4 modelMatrix { 1.0f };
 
     ComPtr<ID3D12Resource> raytracingOutput;
-    RayTraceShader rtShader, rtTriangleShader;
+    RayTraceShader rtShader;
     UploadBuffer<glm::mat4> invViewProjBuffer;
     DefaultBuffer<TriangleData> triangleData;
     DefaultBuffer<float> displacementScalesBuffer;
@@ -275,26 +270,7 @@ private:
     DefaultBuffer<glm::vec2> minMaxDisplacementBuffer;
     DefaultBuffer<float> deltaBuffer;
 
-    /**
-     * @return time in seconds since application launched (actually, since the first time we call this function, but we
-     * almost immediately call this function at startup)
-     */
-    static double getTime() {
-        static LARGE_INTEGER frequency;
-        static LARGE_INTEGER start;
-        static bool initialized = false;
-
-        if (!initialized) {
-            QueryPerformanceFrequency(&frequency);
-            QueryPerformanceCounter(&start);
-            initialized = true;
-        }
-
-        LARGE_INTEGER now;
-        QueryPerformanceCounter(&now);
-
-        return static_cast<double>(now.QuadPart - start.QuadPart) / frequency.QuadPart;
-    }
+    bool runTessellated;
 
     void createDevice() {
 #ifdef DX12_ENABLE_DEBUG_LAYER
@@ -358,15 +334,22 @@ private:
 int main(const int argc, char* argv[]) {
     //The first argument is the path to the .exe file
     if(argc == 1) {
-        std::cerr << "Did not specify micro mesh file as program argument";
+        std::cerr << "Did not specify micro mesh file as program argument.";
         return 1;
     }
 
     //Introducing scope to make destroy the Application object before we check for live objects
     {
         const std::filesystem::path umeshPath(argv[1]);
+        if(!std::filesystem::exists(umeshPath)) {
+            std::cerr << "Micro-mesh file does not exist.";
+            return 1;
+        }
 
-        Application app(umeshPath);
+        bool tessellated = false;
+        if(argc == 3 && std::string(argv[2]) == "-T") tessellated = true;
+
+        Application app(umeshPath, tessellated);
         app.update();
     }
 

@@ -29,33 +29,35 @@ struct SimpleVertex {
     glm::vec3 displacement;
 };
 
-GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuMesh(cpuMesh) {
-    // const auto [vData, iData] = cpuMesh.allTriangles();
-    //
-    // //Create vertex buffer
-    // {
-    //     UploadBuffer<Vertex> vBuffer(device, vData.size());
-    //     vBuffer.upload(vData);
-    //
-    //     vertexBuffer = std::move(vBuffer.getBuffer());
-    //     vertexBufferView.BufferLocation = vBuffer.getBuffer()->GetGPUVirtualAddress();
-    //     vertexBufferView.StrideInBytes = sizeof(Vertex);
-    //     vertexBufferView.SizeInBytes = vData.size() * sizeof(Vertex);
-    // }
-    //
-    // //Create index buffer
-    // {
-    //     UploadBuffer<glm::uvec3> iBuffer(device, iData.size());
-    //     iBuffer.upload(iData);
-    //
-    //     indexBuffer = std::move(iBuffer.getBuffer());
-    //     indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
-    //     indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-    //     indexBufferView.SizeInBytes = iData.size() * sizeof(glm::uvec3);
-    // }
-    //
-    // nVertices = vData.size();
-    // nIndices = 3 * iData.size();
+GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device, bool runTessellated): cpuMesh(cpuMesh) {
+    if(runTessellated) {
+        const auto [vData, iData] = cpuMesh.allTriangles();
+
+        //Create vertex buffer
+        {
+            UploadBuffer<Vertex> vBuffer(device, vData.size());
+            vBuffer.upload(vData);
+
+            vertexBuffer = std::move(vBuffer.getBuffer());
+            vertexBufferView.BufferLocation = vBuffer.getBuffer()->GetGPUVirtualAddress();
+            vertexBufferView.StrideInBytes = sizeof(Vertex);
+            vertexBufferView.SizeInBytes = vData.size() * sizeof(Vertex);
+        }
+
+        //Create index buffer
+        {
+            UploadBuffer<glm::uvec3> iBuffer(device, iData.size());
+            iBuffer.upload(iData);
+
+            indexBuffer = std::move(iBuffer.getBuffer());
+            indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
+            indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+            indexBufferView.SizeInBytes = iData.size() * sizeof(glm::uvec3);
+        }
+
+        nVertices = vData.size();
+        nIndices = 3 * iData.size();
+    }
 
 
     //Prepare buffer data for use in compute shader
@@ -97,8 +99,8 @@ GPUMesh::GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device): cpuM
 
     //Create BLAS AND TLAS
     DefaultBuffer<void> scratchBufferBLAS;
-    createBLAS(device, cw.getCommandList(), triangles.size(), outputBuffer.getBuffer(), scratchBufferBLAS);
-    //createTriangleBLAS(device, cw.getCommandList(), scratchBufferBLAS);
+    if(runTessellated) createTriangleBLAS(device, cw.getCommandList(), scratchBufferBLAS);
+    else createBLAS(device, cw.getCommandList(), triangles.size(), outputBuffer.getBuffer(), scratchBufferBLAS);
 
     DefaultBuffer<void> scratchBufferTLAS;
     UploadBuffer<D3D12_RAYTRACING_INSTANCE_DESC> instanceBuffer(device, 1);
@@ -138,9 +140,7 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device) {
-    if(!std::filesystem::exists(umeshFilePath)) throw MeshLoadingException(fmt::format("File {} does not exist", umeshFilePath.string().c_str()));
-
+std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, const bool runTessellated) {
     GLTFReadInfo read_micromesh;
     if (!read_gltf(umeshFilePath.string(), read_micromesh)) {
         std::cerr << "Error reading gltf file" << std::endl;
@@ -152,21 +152,9 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umesh
 
     std::vector<Mesh> subMeshes = TinyGLTFLoader(umeshFilePath, read_micromesh).toMesh();
     std::vector<GPUMesh> gpuMeshes;
-    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device); }
+    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device, runTessellated); }
 
     return gpuMeshes;
-}
-
-D3D12_VERTEX_BUFFER_VIEW GPUMesh::getVertexBufferView() const {
-    return vertexBufferView;
-}
-
-D3D12_INDEX_BUFFER_VIEW GPUMesh::getIndexBufferView() const {
-    return indexBufferView;
-}
-
-UINT GPUMesh::getIndexCount() const {
-    return nIndices;
 }
 
 void GPUMesh::createBLAS(
@@ -297,10 +285,6 @@ void GPUMesh::createTLAS(
 
 ComPtr<ID3D12Resource> GPUMesh::getTLASBuffer() const {
     return tlasBuffer.getBuffer();
-}
-
-std::vector<D3D12_RAYTRACING_AABB> GPUMesh::getAABBs() const {
-    return AABBs;
 }
 
 ComPtr<ID3D12Resource> GPUMesh::getVertexBuffer() const {
