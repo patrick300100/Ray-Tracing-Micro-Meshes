@@ -156,7 +156,7 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
         case WM_MOUSEMOVE: {
             int x = GET_X_LPARAM(lParam);
             int y = GET_Y_LPARAM(lParam);
-            glm::vec2 pos = glm::vec2(x, windowData->window->windowSize.y - 1 - y);
+            const auto pos = glm::vec2(x, windowData->window->windowSize.y - 1 - y);
 
             for(const auto& cb : windowData->window->m_mouseMoveCallbacks) cb(pos);
             break;
@@ -164,12 +164,13 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 
         case WM_MOUSEWHEEL: {
             float deltaY = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / WHEEL_DELTA;
-            glm::vec2 offset = glm::vec2(0, deltaY);
+            const auto offset = glm::vec2(0, deltaY);
 
             for(const auto& cb : windowData->window->m_scrollCallbacks) cb(offset);
             break;
         }
-        case WM_SIZE:
+
+        case WM_SIZE: {
             if(wParam != SIZE_MINIMIZED) {
                 windowData->gpuState->waitForLastSubmittedFrame();
                 windowData->gpuState->cleanupRenderTarget();
@@ -178,16 +179,24 @@ LRESULT WINAPI Window::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
                 windowData->gpuState->createRenderTarget();
             }
             return 0;
-        case WM_NCDESTROY:
+        }
+
+        case WM_NCDESTROY: {
             delete reinterpret_cast<WindowData*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
             SetWindowLongPtr(hWnd, GWLP_USERDATA, 0);
             break;
-        case WM_SYSCOMMAND:
+        }
+
+        case WM_SYSCOMMAND: {
             if((wParam & 0xfff0) == SC_KEYMENU) return 0; // Disable ALT application menu
             break;
-        case WM_DESTROY:
+        }
+
+        case WM_DESTROY: {
             PostQuitMessage(0);
             return 0;
+        }
+
         case WM_SETCURSOR: {
             if (LOWORD(lParam) == HTCLIENT) {
                 SetCursor(LoadCursor(nullptr, IDC_ARROW));
