@@ -141,14 +141,10 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
 }
 
 GPUMesh GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, const bool runTessellated) {
+    //Use functions from micromesh-tools to read *.gltf and *.bary file
     GLTFReadInfo read_micromesh;
-    if (!read_gltf(umeshFilePath.string(), read_micromesh)) {
-        std::cerr << "Error reading gltf file" << std::endl;
-    }
-
-    if (!read_micromesh.has_subdivision_mesh()) {
-        std::cerr << "gltf file does not contain micromesh data" << std::endl;
-    }
+    if(!read_gltf(umeshFilePath.string(), read_micromesh)) std::cerr << "Error reading gltf file" << std::endl;
+    if(!read_micromesh.has_subdivision_mesh()) std::cerr << "gltf file does not contain micromesh data" << std::endl;
 
     const Mesh m = TinyGLTFLoader(umeshFilePath, read_micromesh).toMesh();
 
