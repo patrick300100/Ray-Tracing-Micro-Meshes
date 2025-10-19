@@ -9,9 +9,7 @@ DISABLE_WARNINGS_PUSH()
 DISABLE_WARNINGS_POP()
 
 class TinyGLTFLoader {
-    tinygltf::Model animModel;
     tinygltf::Model umeshModel;
-    std::vector<int> parent; //Parent of each bone. The value is the index of the bone parent
     SubdivisionMesh umesh;
 
     template <typename T>
@@ -31,20 +29,12 @@ class TinyGLTFLoader {
     }
 
     /**
-     * Transforms the vertices so that they are correctly placed in the scene. This is necessary because GLTF only stores
-     * raw vertex data at the center of the scene (no translations, no scale, no rotation).
-     */
-    static void setupMeshesInScene(std::vector<Vertex>& vertices, const tinygltf::Node& node);
-
-    void boneTransformations(Mesh& mesh) const;
-
-    /**
     * Fetch the vertex displacement direction given its position.
     */
     [[nodiscard]] glm::vec3 getVertexDisplacementDir(glm::vec3 position) const;
 
 public:
-    TinyGLTFLoader(const std::filesystem::path& animFilePath, const std::filesystem::path& umeshFilePath , GLTFReadInfo& umeshReadInfo);
+    TinyGLTFLoader(const std::filesystem::path& umeshFilePath , GLTFReadInfo& umeshReadInfo);
 
-    std::vector<Mesh> toMesh();
+    Mesh toMesh();
 };

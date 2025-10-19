@@ -16,7 +16,7 @@
 #pragma comment(lib, "dxguid.lib")
 #endif
 
-Microsoft::WRL::ComPtr<IDXGISwapChain3> GPUState::get_swap_chain() const {
+Microsoft::WRL::ComPtr<IDXGISwapChain3> GPUState::getSwapChain() const {
     return swapChain;
 }
 
@@ -90,7 +90,6 @@ bool GPUState::createDevice(const ComPtr<ID3D12Device5>& d, const ComPtr<IDXGISw
 
 void GPUState::cleanupDevice() {
     cleanupRenderTarget();
-    if(swapChainWaitableObject != nullptr) { CloseHandle(swapChainWaitableObject); }
     for(auto& fc : frameContext) {
         if(fc.commandAllocator) fc.commandAllocator.Reset();
     }
@@ -154,166 +153,4 @@ void GPUState::cleanupRenderTarget() {
     for(auto& rt : mainRenderTargetResource) {
         if(rt) rt.Reset();
     }
-}
-
-void GPUState::initImGui() const {
-    // Before 1.91.6: our signature was using a single descriptor. From 1.92, specifying SrvDescriptorAllocFn/SrvDescriptorFreeFn will be required to benefit from new features.
-    ImGui_ImplDX12_Init(device.Get(), APP_NUM_FRAMES_IN_FLIGHT, DXGI_FORMAT_R8G8B8A8_UNORM, srvDescHeap.Get(), srvDescHeap->GetCPUDescriptorHandleForHeapStart(), srvDescHeap->GetGPUDescriptorHandleForHeapStart());
-}
-
-void GPUState::renderFrame(const CommandSender& cs, const glm::vec4& clearColor, const glm::uvec2& dimension, const std::function<void()>& render, const Shader& shader) {
-    FrameContext* frameCtx = waitForNextFrameResources();
-    const UINT backBufferIdx = swapChain->GetCurrentBackBufferIndex();
-    frameCtx->commandAllocator->Reset();
-
-    D3D12_RESOURCE_BARRIER barrier = {};
-    barrier.Type                   = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Flags                  = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource   = mainRenderTargetResource[backBufferIdx].Get();
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    commandList->Reset(frameCtx->commandAllocator.Get(), nullptr);
-    commandList->ResourceBarrier(1, &barrier);
-
-    D3D12_VIEWPORT viewport = {};
-    viewport.TopLeftX = 0;
-    viewport.TopLeftY = 0;
-    viewport.Width = static_cast<float>(dimension.x);
-    viewport.Height = static_cast<float>(dimension.y);
-    viewport.MinDepth = 0.1f;
-    viewport.MaxDepth = 1.0f;
-    commandList->RSSetViewports(1, &viewport);
-
-    D3D12_RECT scissorRect = {};
-    scissorRect.left = 0;
-    scissorRect.top = 0;
-    scissorRect.right = static_cast<LONG>(dimension.x);
-    scissorRect.bottom = static_cast<LONG>(dimension.y);
-    commandList->RSSetScissorRects(1, &scissorRect);
-
-    const float clear_color_with_alpha[4] = { clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w };
-    commandList->ClearRenderTargetView(mainRenderTargetDescriptor[backBufferIdx], clear_color_with_alpha, 0, nullptr);
-
-    const auto dsvHandle = dsvHeap->GetCPUDescriptorHandleForHeapStart();
-    commandList->OMSetRenderTargets(1, &mainRenderTargetDescriptor[backBufferIdx], FALSE, &dsvHandle);
-
-    ID3D12DescriptorHeap* heap[] = { srvDescHeap.Get() };
-    commandList->SetDescriptorHeaps(1, heap);
-    commandList->SetGraphicsRootSignature(shader.getRootSignature().Get());
-
-    commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 1, &scissorRect);
-
-    render(); //Render mesh and other drawable objects
-
-    //Render ImGui
-    ImGui::Render();
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
-
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.StateAfter  = D3D12_RESOURCE_STATE_PRESENT;
-    commandList->ResourceBarrier(1, &barrier);
-    commandList->Close();
-
-    ID3D12CommandList* cmdsList[] = { commandList.Get() };
-    commandQueue->ExecuteCommandLists(1, cmdsList);
-
-    // Present
-    HRESULT hr = swapChain->Present(1, 0); // Present with vsync
-    //HRESULT hr = g_pSwapChain->Present(0, 0); // Present without vsync
-    swapChainOccluded = hr == DXGI_STATUS_OCCLUDED;
-
-    UINT64 fenceValue = fenceLastSignaledValue + 1;
-    commandQueue->Signal(fence.Get(), fenceValue);
-    fenceLastSignaledValue = fenceValue;
-    frameCtx->fenceValue = fenceValue;
-}
-
-void GPUState::createPipeline(const RasterizationShader& shaders) {
-    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-        { "POSITION",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, position),         D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "NORMAL",         0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, normal),           D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BONEINDICES",    0, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, boneIndices),      D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BONEWEIGHTS",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, boneWeights),      D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "DIRECTION",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, direction),     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BASEBONEINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, baseBoneIndices0), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BASEBONEINDICES", 1, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, baseBoneIndices1), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BASEBONEINDICES", 2, DXGI_FORMAT_R32G32B32A32_SINT,  0, offsetof(Vertex, baseBoneIndices2), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BASEBONEWEIGHTS", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, baseBoneWeights0), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BASEBONEWEIGHTS", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, baseBoneWeights1), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BASEBONEWEIGHTS", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, offsetof(Vertex, baseBoneWeights2), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "BARYCOORDS",      0, DXGI_FORMAT_R32G32B32_FLOAT,    0, offsetof(Vertex, baryCoords),       D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-    };
-
-    D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
-    depthStencilDesc.DepthEnable = TRUE;
-    depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-    depthStencilDesc.StencilEnable = FALSE;
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
-    psoDesc.pRootSignature = shaders.getRootSignature().Get();
-    psoDesc.VS = { shaders.getVertexShader()->GetBufferPointer(), shaders.getVertexShader()->GetBufferSize() };
-    psoDesc.PS = { shaders.getPixelShader()->GetBufferPointer(), shaders.getPixelShader()->GetBufferSize() };
-    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    psoDesc.DepthStencilState = depthStencilDesc;
-    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-    psoDesc.SampleMask = UINT_MAX;
-    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-    psoDesc.SampleDesc.Count = 1;
-
-    device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline));
-}
-
-void GPUState::drawMesh(const D3D12_VERTEX_BUFFER_VIEW vbv, const D3D12_INDEX_BUFFER_VIEW ibv, const UINT nIndices) const {
-    commandList->SetPipelineState(pipeline.Get());
-    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    commandList->IASetVertexBuffers(0, 1, &vbv);
-    commandList->IASetIndexBuffer(&ibv);
-    commandList->DrawIndexedInstanced(nIndices, 1, 0, 0, 0);
-}
-
-void GPUState::setConstantBuffer(const UINT index, const Microsoft::WRL::ComPtr<ID3D12Resource>& bufferPtr) const {
-    commandList->SetGraphicsRootConstantBufferView(index, bufferPtr->GetGPUVirtualAddress());
-}
-
-void GPUState::createDepthBuffer(const glm::uvec2& dimension) {
-    D3D12_RESOURCE_DESC depthDesc = {};
-    depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    depthDesc.Alignment = 0;
-    depthDesc.Width = dimension.x;
-    depthDesc.Height = dimension.y;
-    depthDesc.DepthOrArraySize = 1;
-    depthDesc.MipLevels = 1;
-    depthDesc.Format = DXGI_FORMAT_D32_FLOAT;
-    depthDesc.SampleDesc.Count = 1;
-    depthDesc.SampleDesc.Quality = 0;
-    depthDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-    depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-
-    D3D12_CLEAR_VALUE clearValue = {};
-    clearValue.Format = DXGI_FORMAT_D32_FLOAT;
-    clearValue.DepthStencil.Depth = 1.0f;
-    clearValue.DepthStencil.Stencil = 0;
-
-    const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_DEFAULT);
-
-    device->CreateCommittedResource(
-        &heapProps,
-        D3D12_HEAP_FLAG_NONE,
-        &depthDesc,
-        D3D12_RESOURCE_STATE_DEPTH_WRITE,
-        &clearValue,
-        IID_PPV_ARGS(&depthStencilBuffer));
-
-    D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-    dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
-    dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-
-    device->CreateDepthStencilView(depthStencilBuffer.Get(), &dsvDesc, dsvHeap->GetCPUDescriptorHandleForHeapStart());
 }

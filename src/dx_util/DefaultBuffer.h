@@ -21,7 +21,7 @@ public:
      * @param state buffer state
      * @param flag buffer flag
      */
-    DefaultBuffer(const ComPtr<ID3D12Device>& device, const int elementCount, const D3D12_RESOURCE_STATES state, const D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE):
+    DefaultBuffer(const ComPtr<ID3D12Device>& device, const size_t elementCount, const D3D12_RESOURCE_STATES state, const D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE):
         DefaultBuffer(sizeof(T) * elementCount, device, state, flag)
     {
     }
