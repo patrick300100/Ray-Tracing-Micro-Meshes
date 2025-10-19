@@ -23,7 +23,7 @@ TinyGLTFLoader::TinyGLTFLoader(const std::filesystem::path& umeshFilePath, GLTFR
     umesh = umeshReadInfo.get_subdivision_mesh();
 }
 
-std::vector<Mesh> TinyGLTFLoader::toMesh() {
+Mesh TinyGLTFLoader::toMesh() {
     const auto umeshPrimitive = umeshModel.meshes[0].primitives[0];
 
     Mesh myMesh;
@@ -85,7 +85,7 @@ std::vector<Mesh> TinyGLTFLoader::toMesh() {
         v.direction = getVertexDisplacementDir(v.position);
     }
 
-    return {myMesh};
+    return myMesh;
 }
 
 glm::vec3 TinyGLTFLoader::getVertexDisplacementDir(const glm::vec3 position) const {

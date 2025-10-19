@@ -47,6 +47,7 @@ class GPUMesh {
 public:
     Mesh cpuMesh;
 
+    GPUMesh() = default;
     GPUMesh(const Mesh& cpuMesh, const ComPtr<ID3D12Device5>& device, bool runTessellated);
     GPUMesh(const GPUMesh&) = delete;
     GPUMesh(GPUMesh&& other) noexcept;
@@ -54,7 +55,7 @@ public:
     GPUMesh& operator=(const GPUMesh&) = delete;
     GPUMesh& operator=(GPUMesh&& other) noexcept;
 
-    static std::vector<GPUMesh> loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, bool runTessellated);
+    static GPUMesh loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, bool runTessellated);
 
     [[nodiscard]] ComPtr<ID3D12Resource> getTLASBuffer() const;
     [[nodiscard]]ComPtr<ID3D12Resource> getVertexBuffer() const;

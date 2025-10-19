@@ -70,13 +70,13 @@ public:
                {},
                {{SRV, 3}, {UAV, 1}, {CBV, 1}},
                device,
-               mesh[0].cpuMesh.hasUniformSubdivisionLevel()
+               mesh.cpuMesh.hasUniformSubdivisionLevel()
             );
 
-            rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
+            rtShader.createAccStrucSRV(mesh.getTLASBuffer());
 
-            rtShader.createSRV<Vertex>(mesh[0].getVertexBuffer());
-            rtShader.createSRV<glm::uvec3>(mesh[0].getIndexBuffer());
+            rtShader.createSRV<Vertex>(mesh.getVertexBuffer());
+            rtShader.createSRV<glm::uvec3>(mesh.getIndexBuffer());
 
 
             //Creating output texture
@@ -110,7 +110,7 @@ public:
 
             cw.execute(device);
             cw.reset();
-        } else { //Ray trace the micro-mesh
+        } else { //Ray trace micro-mesh
             rtShader = RayTraceShader(
                RESOURCE_ROOT L"shaders/raygen.hlsl",
                RESOURCE_ROOT L"shaders/miss.hlsl",
@@ -119,21 +119,21 @@ public:
                {},
                {{SRV, 6}, {UAV, 1}, {CBV, 1}},
                device,
-               mesh[0].cpuMesh.hasUniformSubdivisionLevel()
+               mesh.cpuMesh.hasUniformSubdivisionLevel()
             );
 
-            rtShader.createAccStrucSRV(mesh[0].getTLASBuffer());
+            rtShader.createAccStrucSRV(mesh.getTLASBuffer());
 
 
             std::vector<BaseVertex> baseVertices;
-            baseVertices.reserve(mesh[0].cpuMesh.vertices.size());
-            std::ranges::transform(mesh[0].cpuMesh.vertices, std::back_inserter(baseVertices), [](const Vertex& v) { return BaseVertex{v.position, v.direction}; });
+            baseVertices.reserve(mesh.cpuMesh.vertices.size());
+            std::ranges::transform(mesh.cpuMesh.vertices, std::back_inserter(baseVertices), [](const Vertex& v) { return BaseVertex{v.position, v.direction}; });
 
             vertexBuffer = DefaultBuffer<BaseVertex>(device, baseVertices.size(), D3D12_RESOURCE_STATE_COPY_DEST);
             vertexBuffer.upload(baseVertices, cw.getCommandList(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             rtShader.createSRV<BaseVertex>(vertexBuffer.getBuffer());
 
-            const auto cpuMesh = mesh[0].cpuMesh;
+            const auto cpuMesh = mesh.cpuMesh;
 
             std::vector<TriangleData> tData;
             tData.reserve(cpuMesh.triangles.size());
@@ -255,7 +255,7 @@ private:
     ComPtr<IDXGISwapChain3> swapChain;
     CommandSender swapChainCS; //Command queue and such for the swapchain
 
-    std::vector<GPUMesh> mesh;
+    GPUMesh mesh;
 
     std::unique_ptr<Trackball> trackball = std::make_unique<Trackball>(&window, glm::radians(50.0f));
 

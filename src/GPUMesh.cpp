@@ -140,7 +140,7 @@ GPUMesh& GPUMesh::operator=(GPUMesh&& other) noexcept {
     return *this;
 }
 
-std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, const bool runTessellated) {
+GPUMesh GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umeshFilePath, const ComPtr<ID3D12Device5>& device, const bool runTessellated) {
     GLTFReadInfo read_micromesh;
     if (!read_gltf(umeshFilePath.string(), read_micromesh)) {
         std::cerr << "Error reading gltf file" << std::endl;
@@ -150,11 +150,9 @@ std::vector<GPUMesh> GPUMesh::loadGLTFMeshGPU(const std::filesystem::path& umesh
         std::cerr << "gltf file does not contain micromesh data" << std::endl;
     }
 
-    std::vector<Mesh> subMeshes = TinyGLTFLoader(umeshFilePath, read_micromesh).toMesh();
-    std::vector<GPUMesh> gpuMeshes;
-    for (const Mesh& mesh : subMeshes) { gpuMeshes.emplace_back(mesh, device, runTessellated); }
+    const Mesh m = TinyGLTFLoader(umeshFilePath, read_micromesh).toMesh();
 
-    return gpuMeshes;
+    return {m, device, runTessellated};
 }
 
 void GPUMesh::createBLAS(
