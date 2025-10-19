@@ -6,7 +6,6 @@
 #include <windows.h>
 
 #include "CommandSender.h"
-#include "RasterizationShader.h"
 #include "RayTraceShader.h"
 #include "UploadBuffer.h"
 DISABLE_WARNINGS_PUSH()
