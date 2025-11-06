@@ -337,7 +337,7 @@ int main(const int argc, char* argv[]) {
         return 1;
     }
 
-    //Introducing scope to make destroy the Application object before we check for live objects
+    //Introducing scope to destroy the Application object before we check for live objects
     {
         const std::filesystem::path umeshPath(argv[1]);
         if(!std::filesystem::exists(umeshPath)) {
